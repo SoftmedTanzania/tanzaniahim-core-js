@@ -4,8 +4,8 @@
 
 import request from 'supertest'
 import should from 'should'
-import { ObjectId } from 'mongodb'
-import { promisify } from 'util'
+import {ObjectId} from 'mongodb'
+import {promisify} from 'util'
 
 import * as autoRetry from '../../src/autoRetry'
 import * as constants from '../constants'
@@ -20,17 +20,19 @@ import {
   TaskModel,
   TransactionModel
 } from '../../src/model'
-import { config } from '../../src/config'
+import {config} from '../../src/config'
 
 // TODO : Check the tasks have been removed before trying the next test
 
-function waitForAutoRetry () {
-  return testUtils.pollCondition(() => AutoRetryModel.countDocuments().then(count => count === 1))
+function waitForAutoRetry() {
+  return testUtils.pollCondition(() =>
+    AutoRetryModel.countDocuments().then(count => count === 1)
+  )
 }
 
 // TODO : This test suite could be written a bit neater
 describe(`Auto Retry Integration Tests`, () => {
-  const { HTTP_BASE_URL: baseUrl } = constants
+  const {HTTP_BASE_URL: baseUrl} = constants
   const ORIGINAL_AUTH = config.authentication
   const ORIGNAL_RERUN = config.rerun
 
@@ -38,12 +40,10 @@ describe(`Auto Retry Integration Tests`, () => {
     clientID: 'testApp',
     clientDomain: 'test-client.jembi.org',
     name: 'TEST Client',
-    roles: [
-      'OpenMRS_PoC',
-      'PoC'
-    ],
+    roles: ['OpenMRS_PoC', 'PoC'],
     passwordAlgorithm: 'sha512',
-    passwordHash: '28dce3506eca8bb3d9d5a9390135236e8746f15ca2d8c86b8d8e653da954e9e3632bf9d85484ee6e9b28a3ada30eec89add42012b185bd9a4a36a07ce08ce2ea',
+    passwordHash:
+      '28dce3506eca8bb3d9d5a9390135236e8746f15ca2d8c86b8d8e653da954e9e3632bf9d85484ee6e9b28a3ada30eec89add42012b185bd9a4a36a07ce08ce2ea',
     passwordSalt: '1234567890',
     cert: ''
   }
@@ -90,12 +90,14 @@ describe(`Auto Retry Integration Tests`, () => {
       name: 'TEST DATA - Will break channel',
       urlPattern: '^/test/nowhere$',
       allow: ['PoC'],
-      routes: [{
-        name: 'unavailable route',
-        host: 'localhost',
-        port: 9999,
-        primary: true
-      }
+      methods: ['GET'],
+      routes: [
+        {
+          name: 'unavailable route',
+          host: 'localhost',
+          port: 9999,
+          primary: true
+        }
       ],
       autoRetryEnabled: true,
       autoRetryPeriodMinutes: 1,
@@ -110,12 +112,14 @@ describe(`Auto Retry Integration Tests`, () => {
       name: 'TEST DATA - Will break channel - attempt once',
       urlPattern: '^/test/nowhere/2$',
       allow: ['PoC'],
-      routes: [{
-        name: 'unavailable route',
-        host: 'localhost',
-        port: 9999,
-        primary: true
-      }
+      methods: ['GET'],
+      routes: [
+        {
+          name: 'unavailable route',
+          host: 'localhost',
+          port: 9999,
+          primary: true
+        }
       ],
       autoRetryEnabled: true,
       autoRetryPeriodMinutes: 1,
@@ -164,7 +168,7 @@ describe(`Auto Retry Integration Tests`, () => {
         .expect(500)
 
       await waitForAutoRetry()
-      const channel1 = await ChannelModel.findOne({ name: channel1Doc.name })
+      const channel1 = await ChannelModel.findOne({name: channel1Doc.name})
       const trx = await TransactionModel.findOne()
       const autoRetry = await AutoRetryModel.findOne()
       autoRetry.transactionID.toString().should.be.equal(trx._id.toString())
@@ -183,7 +187,9 @@ describe(`Auto Retry Integration Tests`, () => {
 
       const transactions = await TransactionModel.find()
       transactions.length.should.be.exactly(2)
-      transactions[0].childIDs[0].toString().should.be.equal(transactions[1]._id.toString())
+      transactions[0].childIDs[0]
+        .toString()
+        .should.be.equal(transactions[1]._id.toString())
       transactions[1].autoRetryAttempt.should.be.exactly(1)
       // failed so should be eligible to rerun again
       transactions[1].autoRetry.should.be.true()
@@ -201,7 +207,9 @@ describe(`Auto Retry Integration Tests`, () => {
 
       const transactions = await TransactionModel.find()
       transactions.length.should.be.exactly(2)
-      transactions[0].childIDs[0].toString().should.be.equal(transactions[1]._id.toString())
+      transactions[0].childIDs[0]
+        .toString()
+        .should.be.equal(transactions[1]._id.toString())
       transactions[1].autoRetryAttempt.should.be.exactly(1)
       // failed so should be eligible to rerun again
       transactions[1].autoRetry.should.be.false()
@@ -218,7 +226,9 @@ describe(`Auto Retry Integration Tests`, () => {
       await tasks.findAndProcessAQueuedTask()
 
       const events = await EventModel.find()
-      const prouteEvents = events.filter(ev => (ev.type === 'primary') && (ev.event === 'end'))
+      const prouteEvents = events.filter(
+        ev => ev.type === 'primary' && ev.event === 'end'
+      )
 
       // original transaction
       should(prouteEvents[0].autoRetryAttempt).be.null()
@@ -232,17 +242,20 @@ describe(`Auto Retry Integration Tests`, () => {
       name: 'TEST DATA - Secondary route will break channel',
       urlPattern: '^/test/nowhere$',
       allow: ['PoC'],
-      routes: [{
-        name: 'available route',
-        host: 'localhost',
-        port: constants.HTTP_PORT,
-        primary: true
-      },
-      {
-        name: 'unavailable route',
-        host: 'localhost',
-        port: 9999
-      }],
+      methods: ['GET'],
+      routes: [
+        {
+          name: 'available route',
+          host: 'localhost',
+          port: constants.HTTP_PORT,
+          primary: true
+        },
+        {
+          name: 'unavailable route',
+          host: 'localhost',
+          port: 9999
+        }
+      ],
       updatedBy: {
         id: new ObjectId(),
         name: 'Test'
@@ -250,7 +263,7 @@ describe(`Auto Retry Integration Tests`, () => {
     }
 
     before(async () => {
-      [server] = await Promise.all([
+      ;[server] = await Promise.all([
         testUtils.createMockHttpServer(),
         new ClientModel(clientDoc).save(),
         new ChannelModel(channelDoc).save()
@@ -289,12 +302,14 @@ describe(`Auto Retry Integration Tests`, () => {
       name: 'TEST DATA - Mediator has error channel',
       urlPattern: '^/test/nowhere$',
       allow: ['PoC'],
-      routes: [{
-        name: 'mediator route',
-        host: 'localhost',
-        port: constants.MEDIATOR_PORT,
-        primary: true
-      }
+      methods: ['GET'],
+      routes: [
+        {
+          name: 'mediator route',
+          host: 'localhost',
+          port: constants.MEDIATOR_PORT,
+          primary: true
+        }
       ],
       updatedBy: {
         id: new ObjectId(),
@@ -317,7 +332,7 @@ describe(`Auto Retry Integration Tests`, () => {
     }
 
     before(async () => {
-      [server] = await Promise.all([
+      ;[server] = await Promise.all([
         testUtils.createMockHttpMediator(mediatorResponse),
         new ClientModel(clientDoc).save(),
         new ChannelModel(channelDoc).save()
@@ -355,17 +370,19 @@ describe(`Auto Retry Integration Tests`, () => {
       name: 'TEST DATA - Both will break channel',
       urlPattern: '^/test/nowhere$',
       allow: ['PoC'],
-      routes: [{
-        name: 'unavailable route 1',
-        host: 'localhost',
-        port: 9999,
-        primary: true
-      },
-      {
-        name: 'unavailable route 2',
-        host: 'localhost',
-        port: 9988
-      }
+      methods: ['GET'],
+      routes: [
+        {
+          name: 'unavailable route 1',
+          host: 'localhost',
+          port: 9999,
+          primary: true
+        },
+        {
+          name: 'unavailable route 2',
+          host: 'localhost',
+          port: 9988
+        }
       ],
       updatedBy: {
         id: new ObjectId(),

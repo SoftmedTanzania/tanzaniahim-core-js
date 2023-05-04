@@ -4,19 +4,19 @@
 
 import moment from 'moment'
 import request from 'supertest'
-import { promisify } from 'util'
+import {promisify} from 'util'
 
-import * as constants from '../constants'
 import * as server from '../../src/server'
 import * as testUtils from '../utils'
-import { connectionDefault } from '../../src/config/connection'
+import {connectionDefault} from '../../src/config/connection'
+import {SERVER_PORTS, BASE_URL} from '../constants'
 
 describe(`API Integration Tests`, () => {
   describe(`Log REST API`, () => {
-    let authDetails
     let beforeTS
     let middleTS
     let endTS
+    let rootCookie = ''
 
     before(async () => {
       beforeTS = moment('2012-01-01 11:00')
@@ -24,24 +24,50 @@ describe(`API Integration Tests`, () => {
       endTS = moment(beforeTS).add(3, 'minutes')
 
       await Promise.all([
+        promisify(server.start)({apiPort: SERVER_PORTS.apiPort}),
         testUtils.setupTestUsers(),
-        promisify(server.start)({ apiPort: constants.SERVER_PORTS.apiPort }),
-        connectionDefault.db.collection('log').deleteMany({}),
+        connectionDefault.db.collection('log').deleteMany({})
       ])
 
       const timestamp = moment(beforeTS)
 
       await connectionDefault.db.collection('log').insertMany([
-        { message: 'TEST1', timestamp: timestamp.add(30, 'seconds').toDate(), level: 'warn', meta: {} },
-        { message: 'TEST2', timestamp: timestamp.add(30, 'seconds').toDate(), level: 'error', meta: {} },
-        { message: 'TEST3', timestamp: timestamp.add(30, 'seconds').toDate(), level: 'warn', meta: {} },
-        { message: 'TEST4', timestamp: timestamp.add(30, 'seconds').toDate(), level: 'warn', meta: {} },
-        { message: 'TEST5', timestamp: timestamp.add(30, 'seconds').toDate(), level: 'error', meta: {} }
+        {
+          message: 'TEST1',
+          timestamp: timestamp.add(30, 'seconds').toDate(),
+          level: 'warn',
+          meta: {}
+        },
+        {
+          message: 'TEST2',
+          timestamp: timestamp.add(30, 'seconds').toDate(),
+          level: 'error',
+          meta: {}
+        },
+        {
+          message: 'TEST3',
+          timestamp: timestamp.add(30, 'seconds').toDate(),
+          level: 'warn',
+          meta: {}
+        },
+        {
+          message: 'TEST4',
+          timestamp: timestamp.add(30, 'seconds').toDate(),
+          level: 'warn',
+          meta: {}
+        },
+        {
+          message: 'TEST5',
+          timestamp: timestamp.add(30, 'seconds').toDate(),
+          level: 'error',
+          meta: {}
+        }
       ])
     })
 
     beforeEach(async () => {
-      authDetails = testUtils.getAuthDetails()
+      const user = testUtils.rootUser
+      rootCookie = await testUtils.authenticate(request, BASE_URL, user)
     })
 
     after(async () => {
@@ -54,12 +80,11 @@ describe(`API Integration Tests`, () => {
 
     describe('*getLogs', () => {
       it('should return latest logs in order', async () => {
-        const res = await request(constants.BASE_URL)
-          .get(`/logs?from=${beforeTS.toISOString()}&until=${endTS.toISOString()}`)
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+        const res = await request(BASE_URL)
+          .get(
+            `/logs?from=${beforeTS.toISOString()}&until=${endTS.toISOString()}`
+          )
+          .set('Cookie', rootCookie)
           .expect(200)
 
         res.body.length.should.be.equal(5)
@@ -71,12 +96,11 @@ describe(`API Integration Tests`, () => {
       })
 
       it('should limit number of logs returned', async () => {
-        const res = await request(constants.BASE_URL)
-          .get(`/logs?limit=2&from=${beforeTS.toISOString()}&until=${endTS.toISOString()}`)
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+        const res = await request(BASE_URL)
+          .get(
+            `/logs?limit=2&from=${beforeTS.toISOString()}&until=${endTS.toISOString()}`
+          )
+          .set('Cookie', rootCookie)
           .expect(200)
 
         res.body.length.should.be.equal(2)
@@ -85,12 +109,11 @@ describe(`API Integration Tests`, () => {
       })
 
       it('should use start after the specified entry', async () => {
-        const res = await request(constants.BASE_URL)
-          .get(`/logs?start=3&from=${beforeTS.toISOString()}&until=${endTS.toISOString()}`)
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+        const res = await request(BASE_URL)
+          .get(
+            `/logs?start=3&from=${beforeTS.toISOString()}&until=${endTS.toISOString()}`
+          )
+          .set('Cookie', rootCookie)
           .expect(200)
 
         res.body.length.should.be.equal(2)
@@ -99,12 +122,11 @@ describe(`API Integration Tests`, () => {
       })
 
       it('should filter by date', async () => {
-        const res = await request(constants.BASE_URL)
-          .get(`/logs?from=${beforeTS.toISOString()}&until=${middleTS.toISOString()}`)
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+        const res = await request(BASE_URL)
+          .get(
+            `/logs?from=${beforeTS.toISOString()}&until=${middleTS.toISOString()}`
+          )
+          .set('Cookie', rootCookie)
           .expect(200)
 
         res.body.length.should.be.equal(3)
@@ -114,12 +136,11 @@ describe(`API Integration Tests`, () => {
       })
 
       it('should filter by level', async () => {
-        const res = await request(constants.BASE_URL)
-          .get(`/logs?level=error&from=${beforeTS.toISOString()}&until=${endTS.toISOString()}`)
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+        const res = await request(BASE_URL)
+          .get(
+            `/logs?level=error&from=${beforeTS.toISOString()}&until=${endTS.toISOString()}`
+          )
+          .set('Cookie', rootCookie)
           .expect(200)
 
         res.body.length.should.be.equal(2)
@@ -128,13 +149,14 @@ describe(`API Integration Tests`, () => {
       })
 
       it('should deny access for a non-admin', async () => {
-        await request(constants.BASE_URL)
-          .get('/logs')
-          .set('auth-username', testUtils.nonRootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
-          .expect(403)
+        const user = testUtils.nonRootUser
+        const cookie = await testUtils.authenticate(request, BASE_URL, user)
+
+        await request(BASE_URL).get('/logs').set('Cookie', cookie).expect(403)
+      })
+
+      it('should return 401 for unauthenticated', async () => {
+        await request(BASE_URL).get('/logs').expect(401)
       })
     })
   })

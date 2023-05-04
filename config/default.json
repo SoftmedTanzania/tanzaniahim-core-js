@@ -31,6 +31,9 @@
     "pollPeriodMins": 60
   },
   "api": {
+    "sessionKey": "r8q,+&1LM3)CD*zAGpx1xm{NeQhc;#",
+    "maxAge": 7200000,
+    "salt": 10,
     "enabled": true,
     "protocol": "https",
     "port": 8080,
@@ -39,7 +42,14 @@
     "maxPayloadSizeMB": 50,
     "truncateSize": 15000,
     "truncateAppend": "\n[truncated ...]",
-    "authenticationTypes": ["token"]
+    "authenticationTypes": ["basic", "local", "token", "openid"],
+    "openid": {
+      "url": "http://localhost:9088/realms/platform-realm",
+      "callbackUrl": "http://localhost:9000",
+      "clientId": "openhim-oauth",
+      "clientSecret": "tZKfEbWf0Ka5HBNZwFrdSyQH2xT1sNMR",
+      "scope": "openid email profile offline_access roles"
+    }
   },
   "rerun": {
     "httpPort": 7786,
@@ -47,7 +57,9 @@
     "processor": {
       "enabled": true,
       "pollPeriodMillis": 2000
-    }
+    },
+    "taskTransactionsLength": 50,
+    "activeConcurrentTasks": 3
   },
   "tcpAdapter": {
     "httpReceiver": {

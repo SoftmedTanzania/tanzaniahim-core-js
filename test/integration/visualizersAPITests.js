@@ -3,29 +3,30 @@
 /* eslint-env mocha */
 
 import request from 'supertest'
-import { promisify } from 'util'
+import {promisify} from 'util'
 
 import * as constants from '../constants'
 import * as server from '../../src/server'
 import * as testUtils from '../utils'
-import { VisualizerModelAPI } from '../../src/model/visualizer'
+import {VisualizerModelAPI} from '../../src/model/visualizer'
 
 describe('API Integration Tests', () => {
-  const { SERVER_PORTS } = constants
+  const {SERVER_PORTS, BASE_URL} = constants
 
   describe('Visualizers REST API testing', () => {
     const visObj = {
       name: 'TestVisualizer',
-      components: [{
-        eventType: 'primary',
-        eventName: 'OpenHIM Mediator FHIR Proxy Route',
-        display: 'FHIR Server'
-      },
-      {
-        eventType: 'primary',
-        eventName: 'echo',
-        display: 'Echo'
-      }
+      components: [
+        {
+          eventType: 'primary',
+          eventName: 'OpenHIM Mediator FHIR Proxy Route',
+          display: 'FHIR Server'
+        },
+        {
+          eventType: 'primary',
+          eventName: 'echo',
+          display: 'Echo'
+        }
       ],
       color: {
         inactive: '#c8cacf',
@@ -45,37 +46,40 @@ describe('API Integration Tests', () => {
         maxTimeout: 5000,
         minDisplayPeriod: 500
       },
-      channels: [{
-        eventType: 'channel',
-        eventName: 'FHIR Proxy',
-        display: 'FHIR Proxy'
-      },
-      {
-        eventType: 'channel',
-        eventName: 'Echo',
-        display: 'Echo'
-      }
+      channels: [
+        {
+          eventType: 'channel',
+          eventName: 'FHIR Proxy',
+          display: 'FHIR Proxy'
+        },
+        {
+          eventType: 'channel',
+          eventName: 'Echo',
+          display: 'Echo'
+        }
       ],
-      mediators: [{
-        mediator: 'urn:mediator:fhir-proxy',
-        name: 'OpenHIM Mediator FHIR Proxy',
-        display: 'OpenHIM Mediator FHIR Proxy'
-      },
-      {
-        mediator: 'urn:mediator:shell-script',
-        name: 'OpenHIM Shell Script Mediator',
-        display: 'OpenHIM Shell Script Mediator'
-      }
+      mediators: [
+        {
+          mediator: 'urn:mediator:fhir-proxy',
+          name: 'OpenHIM Mediator FHIR Proxy',
+          display: 'OpenHIM Mediator FHIR Proxy'
+        },
+        {
+          mediator: 'urn:mediator:shell-script',
+          name: 'OpenHIM Shell Script Mediator',
+          display: 'OpenHIM Shell Script Mediator'
+        }
       ]
     }
 
-    let authDetails = {}
+    let rootCookie = '',
+      nonRootCookie = ''
 
     before(async () => {
       await Promise.all([
         VisualizerModelAPI.deleteMany({}),
         testUtils.setupTestUsers(),
-        promisify(server.start)({ apiPort: SERVER_PORTS.apiPort })
+        promisify(server.start)({apiPort: SERVER_PORTS.apiPort})
       ])
     })
 
@@ -86,7 +90,18 @@ describe('API Integration Tests', () => {
       ])
     })
 
-    beforeEach(() => { authDetails = testUtils.getAuthDetails() })
+    beforeEach(async () => {
+      rootCookie = await testUtils.authenticate(
+        request,
+        BASE_URL,
+        testUtils.rootUser
+      )
+      nonRootCookie = await testUtils.authenticate(
+        request,
+        BASE_URL,
+        testUtils.nonRootUser
+      )
+    })
 
     afterEach(() => VisualizerModelAPI.deleteMany({}))
 
@@ -100,43 +115,31 @@ describe('API Integration Tests', () => {
         vis2.name = 'Visualizer2'
         vis2 = new VisualizerModelAPI(vis2)
 
-        await Promise.all([
-          vis1.save(),
-          vis2.save()
-        ])
+        await Promise.all([vis1.save(), vis2.save()])
 
-        const res = await request(constants.BASE_URL)
+        const res = await request(BASE_URL)
           .get('/visualizers')
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .expect(200)
 
         res.body.should.be.an.Array()
         res.body.length.should.be.exactly(2)
-        const names = res.body.map(vis => vis.name);
-        (Array.from(names).includes('Visualizer1')).should.be.true();
-        (Array.from(names).includes('Visualizer2')).should.be.true()
+        const names = res.body.map(vis => vis.name)
+        Array.from(names).includes('Visualizer1').should.be.true()
+        Array.from(names).includes('Visualizer2').should.be.true()
       })
 
       it('should return a 403 response if the user is not an admin', async () => {
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .get('/visualizers')
-          .set('auth-username', testUtils.nonRootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', nonRootCookie)
           .expect(403)
       })
 
       it('should return an empty array if there are no visualizers', async () => {
-        const res = await request(constants.BASE_URL)
+        const res = await request(BASE_URL)
           .get('/visualizers')
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .expect(200)
 
         res.body.should.be.an.Array()
@@ -154,17 +157,11 @@ describe('API Integration Tests', () => {
         vis2.name = 'Visualizer2'
         vis2 = new VisualizerModelAPI(vis2)
 
-        await Promise.all([
-          vis1.save(),
-          vis2.save()
-        ])
+        await Promise.all([vis1.save(), vis2.save()])
 
-        const res = await request(constants.BASE_URL)
+        const res = await request(BASE_URL)
           .get(`/visualizers/${vis1._id}`)
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .expect(200)
 
         res.body.should.be.an.Object()
@@ -172,60 +169,47 @@ describe('API Integration Tests', () => {
       })
 
       it('should return a 403 response if the user is not an admin', async () => {
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .get('/visualizers/111111111111111111111111')
-          .set('auth-username', testUtils.nonRootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', nonRootCookie)
           .expect(403)
       })
 
       it('should return 404 with message if no visualizers match the _id', async () => {
-        const res = await request(constants.BASE_URL)
+        const res = await request(BASE_URL)
           .get('/visualizers/111111111111111111111111')
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .expect(404)
 
-        res.text.should.equal('Visualizer with _id 111111111111111111111111 could not be found.')
+        res.text.should.equal(
+          'Visualizer with _id 111111111111111111111111 could not be found.'
+        )
       })
     })
 
     describe('*addVisualizer()', () => {
       it('should add a visualizer and return a 201 response', async () => {
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .post('/visualizers')
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .send(Object.assign({}, visObj))
           .expect(201)
 
-        await VisualizerModelAPI.findOne({ name: 'Visualizer1' })
+        await VisualizerModelAPI.findOne({name: 'Visualizer1'})
       })
 
       it('should return a 403 response if the user is not an admin', async () => {
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .post('/visualizers')
-          .set('auth-username', testUtils.nonRootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', nonRootCookie)
           .send(Object.assign({}, visObj))
           .expect(403)
       })
 
       it('should return 404 if no request object is sent', async () => {
-        const res = await request(constants.BASE_URL)
+        const res = await request(BASE_URL)
           .post('/visualizers')
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .send()
           .expect(404)
 
@@ -245,98 +229,80 @@ describe('API Integration Tests', () => {
 
         vis1.save()
 
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .put(`/visualizers/${vis1._id}`)
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .send(visUpdate)
           .expect(200)
 
-        const vis = await VisualizerModelAPI.findOne({ name: 'VisualizerUpdate1' })
+        const vis = await VisualizerModelAPI.findOne({
+          name: 'VisualizerUpdate1'
+        })
         vis.color.should.have.property('inactive', '#11111')
       })
 
       it('should return a 403 response if the user is not an admin', async () => {
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .put('/visualizers/111111111111111111111111')
-          .set('auth-username', testUtils.nonRootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', nonRootCookie)
           .send(Object.assign({}, visObj))
           .expect(403)
       })
 
       it('should return 404 if no request object is sent', async () => {
-        const res = await request(constants.BASE_URL)
+        const res = await request(BASE_URL)
           .put('/visualizers/111111111111111111111111')
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .send()
           .expect(404)
-        res.text.should.equal('Cannot Update Visualizer with _id 111111111111111111111111, no request object')
+        res.text.should.equal(
+          'Cannot Update Visualizer with _id 111111111111111111111111, no request object'
+        )
       })
 
       it('should return 404 if no visualizers match the _id', async () => {
-        const res = await request(constants.BASE_URL)
+        const res = await request(BASE_URL)
           .put('/visualizers/111111111111111111111111')
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .send(Object.assign({}, visObj))
           .expect(404)
-        res.text.should.equal('Cannot Update Visualizer with _id 111111111111111111111111, does not exist')
+        res.text.should.equal(
+          'Cannot Update Visualizer with _id 111111111111111111111111, does not exist'
+        )
       })
     })
 
     describe('*removeVisualizer(visualizerId)', () => {
       it('should sucessfully remove a visualizer', async () => {
         let vis1 = Object.assign({}, visObj)
-        vis1.name = 'Root\'s Visualizer 1'
+        vis1.name = "Root's Visualizer 1"
         vis1 = new VisualizerModelAPI(vis1)
 
         let vis2 = Object.assign({}, visObj)
-        vis2.name = 'Root\'s Visualizer 2'
+        vis2.name = "Root's Visualizer 2"
         vis2 = new VisualizerModelAPI(vis2)
 
-        await Promise.all([
-          vis1.save(),
-          vis2.save()
-        ])
+        await Promise.all([vis1.save(), vis2.save()])
 
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .del(`/visualizers/${vis1._id}`)
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .expect(200)
         const visualizers = await VisualizerModelAPI.find()
         visualizers.length.should.be.exactly(1)
       })
 
       it('should return a 403 response if the user is not an admin', async () => {
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .delete('/visualizers/111111111111111111111111')
-          .set('auth-username', testUtils.nonRootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', nonRootCookie)
           .expect(403)
       })
 
-      return it('should return a 404 when the visualizer doesn\'t exist', async () => {
-        await request(constants.BASE_URL)
+      return it("should return a 404 when the visualizer doesn't exist", async () => {
+        await request(BASE_URL)
           .delete('/visualizers/111111111111111111111111')
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .expect(404)
       })
     })

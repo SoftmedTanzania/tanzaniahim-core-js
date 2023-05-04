@@ -4,18 +4,18 @@
 
 import nconf from 'nconf'
 import request from 'supertest'
-import { ObjectId } from 'mongodb'
-import { promisify } from 'util'
+import {ObjectId} from 'mongodb'
+import {promisify} from 'util'
 
 import * as constants from '../constants'
 import * as server from '../../src/server'
 import * as testUtils from '../utils'
-import { ChannelModelAPI } from '../../src/model/channels'
-import { ClientModelAPI } from '../../src/model/clients'
-import { config } from '../../src/config'
+import {ChannelModelAPI} from '../../src/model/channels'
+import {ClientModelAPI} from '../../src/model/clients'
+import {config} from '../../src/config'
 
-const { SERVER_PORTS } = constants
-nconf.set('router', { httpPort: SERVER_PORTS.httpPort })
+const {SERVER_PORTS} = constants
+nconf.set('router', {httpPort: SERVER_PORTS.httpPort})
 describe('HTTP tests', () => {
   const httpPortPlus40 = constants.PORT_START + 40
   const httpPortPlus41 = constants.PORT_START + 41
@@ -33,12 +33,15 @@ describe('HTTP tests', () => {
         name: 'TEST DATA - Mock endpoint',
         urlPattern: 'test/mock',
         allow: ['PoC'],
-        routes: [{
-          name: 'test route',
-          host: 'localhost',
-          port: httpPortPlus40,
-          primary: true
-        }],
+        methods: ['GET'],
+        routes: [
+          {
+            name: 'test route',
+            host: 'localhost',
+            port: httpPortPlus40,
+            primary: true
+          }
+        ],
         updatedBy: {
           id: new ObjectId(),
           name: 'Test'
@@ -49,25 +52,27 @@ describe('HTTP tests', () => {
         clientID: 'testApp',
         clientDomain: 'test-client.jembi.org',
         name: 'TEST Client',
-        roles: [
-          'OpenMRS_PoC',
-          'PoC'
-        ],
+        roles: ['OpenMRS_PoC', 'PoC'],
         passwordAlgorithm: 'sha512',
-        passwordHash: '28dce3506eca8bb3d9d5a9390135236e8746f15ca2d8c86b8d8e653da954e9e3632bf9d85484ee6e9b28a3ada30eec89add42012b185bd9a4a36a07ce08ce2ea',
+        passwordHash:
+          '28dce3506eca8bb3d9d5a9390135236e8746f15ca2d8c86b8d8e653da954e9e3632bf9d85484ee6e9b28a3ada30eec89add42012b185bd9a4a36a07ce08ce2ea',
         passwordSalt: '1234567890',
         cert: ''
       }
 
       await new ClientModelAPI(testAppDoc).save()
       // Create mock endpoint to forward requests to
-      mockServer = await testUtils.createMockHttpServer(testDoc, httpPortPlus40, 201)
+      mockServer = await testUtils.createMockHttpServer(
+        testDoc,
+        httpPortPlus40,
+        201
+      )
     })
 
     after(async () => {
       await Promise.all([
-        ChannelModelAPI.deleteOne({ name: 'TEST DATA - Mock endpoint' }),
-        ClientModelAPI.deleteOne({ clientID: 'testApp' }),
+        ChannelModelAPI.deleteOne({name: 'TEST DATA - Mock endpoint'}),
+        ClientModelAPI.deleteOne({clientID: 'testApp'}),
         mockServer.close()
       ])
     })
@@ -77,7 +82,7 @@ describe('HTTP tests', () => {
     })
 
     it('should keep HTTP headers of the response intact', async () => {
-      await promisify(server.start)({ httpPort: SERVER_PORTS.httpPort })
+      await promisify(server.start)({httpPort: SERVER_PORTS.httpPort})
       await request(constants.HTTP_BASE_URL)
         .get('/test/mock')
         .send(testDoc)
@@ -101,12 +106,15 @@ describe('HTTP tests', () => {
         name: 'TEST DATA - Mock endpoint',
         urlPattern: '/test/mock',
         allow: ['PoC'],
-        routes: [{
-          name: 'test route',
-          host: 'localhost',
-          port: constants.MEDIATOR_PORT,
-          primary: true
-        }],
+        methods: ['POST', 'PUT'],
+        routes: [
+          {
+            name: 'test route',
+            host: 'localhost',
+            port: constants.MEDIATOR_PORT,
+            primary: true
+          }
+        ],
         updatedBy: {
           id: new ObjectId(),
           name: 'Test'
@@ -117,12 +125,15 @@ describe('HTTP tests', () => {
         name: 'TEST DATA - Mock With Return endpoint',
         urlPattern: '/gmo',
         allow: ['PoC'],
-        routes: [{
-          name: 'test route return',
-          host: 'localhost',
-          port: httpPortPlus41,
-          primary: true
-        }],
+        methods: ['POST', 'PUT'],
+        routes: [
+          {
+            name: 'test route return',
+            host: 'localhost',
+            port: httpPortPlus41,
+            primary: true
+          }
+        ],
         updatedBy: {
           id: new ObjectId(),
           name: 'Test'
@@ -133,13 +144,16 @@ describe('HTTP tests', () => {
         name: 'TEST DATA - Mock With Return endpoint public',
         urlPattern: '/public',
         allow: [],
+        methods: ['POST', 'PUT'],
         authType: 'public',
-        routes: [{
-          name: 'test route',
-          host: 'localhost',
-          port: constants.MEDIATOR_PORT,
-          primary: true
-        }],
+        routes: [
+          {
+            name: 'test route',
+            host: 'localhost',
+            port: constants.MEDIATOR_PORT,
+            primary: true
+          }
+        ],
         updatedBy: {
           id: new ObjectId(),
           name: 'Test'
@@ -152,12 +166,15 @@ describe('HTTP tests', () => {
         allow: [],
         whitelist: ['::ffff:127.0.0.1', '127.0.0.1'], // localhost in IPV6
         authType: 'public',
-        routes: [{
-          name: 'test route',
-          host: 'localhost',
-          port: constants.MEDIATOR_PORT,
-          primary: true
-        }],
+        methods: ['POST', 'PUT'],
+        routes: [
+          {
+            name: 'test route',
+            host: 'localhost',
+            port: constants.MEDIATOR_PORT,
+            primary: true
+          }
+        ],
         updatedBy: {
           id: new ObjectId(),
           name: 'Test'
@@ -168,14 +185,17 @@ describe('HTTP tests', () => {
         name: 'TEST DATA - whitelist but un-authorised',
         urlPattern: '/un-auth',
         allow: ['private'],
+        methods: ['POST', 'PUT'],
         whitelist: ['::ffff:127.0.0.1', '127.0.0.1'], // localhost in IPV6
         authType: 'private',
-        routes: [{
-          name: 'test route',
-          host: 'localhost',
-          port: constants.MEDIATOR_PORT,
-          primary: true
-        }],
+        routes: [
+          {
+            name: 'test route',
+            host: 'localhost',
+            port: constants.MEDIATOR_PORT,
+            primary: true
+          }
+        ],
         updatedBy: {
           id: new ObjectId(),
           name: 'Test'
@@ -186,14 +206,17 @@ describe('HTTP tests', () => {
         name: 'TEST DATA - whitelist but authorised',
         urlPattern: '/auth',
         allow: ['PoC'],
+        methods: ['POST', 'PUT'],
         whitelist: ['::ffff:127.0.0.1', '127.0.0.1'], // localhost in IPV6
         authType: 'private',
-        routes: [{
-          name: 'test route',
-          host: 'localhost',
-          port: constants.MEDIATOR_PORT,
-          primary: true
-        }],
+        routes: [
+          {
+            name: 'test route',
+            host: 'localhost',
+            port: constants.MEDIATOR_PORT,
+            primary: true
+          }
+        ],
         updatedBy: {
           id: new ObjectId(),
           name: 'Test'
@@ -213,12 +236,10 @@ describe('HTTP tests', () => {
         clientID: 'testApp',
         clientDomain: 'test-client.jembi.org',
         name: 'TEST Client',
-        roles: [
-          'OpenMRS_PoC',
-          'PoC'
-        ],
+        roles: ['OpenMRS_PoC', 'PoC'],
         passwordAlgorithm: 'sha512',
-        passwordHash: '28dce3506eca8bb3d9d5a9390135236e8746f15ca2d8c86b8d8e653da954e9e3632bf9d85484ee6e9b28a3ada30eec89add42012b185bd9a4a36a07ce08ce2ea',
+        passwordHash:
+          '28dce3506eca8bb3d9d5a9390135236e8746f15ca2d8c86b8d8e653da954e9e3632bf9d85484ee6e9b28a3ada30eec89add42012b185bd9a4a36a07ce08ce2ea',
         passwordSalt: '1234567890',
         cert: ''
       }
@@ -226,7 +247,12 @@ describe('HTTP tests', () => {
       new ClientModelAPI(testAppDoc).save()
       // Create mock endpoint to forward requests to
       mockServer = testUtils.createMockServerForPost(201, 400, testDoc)
-      mockServerWithReturn = testUtils.createMockServerForPost(201, 400, testDoc, true)
+      mockServerWithReturn = testUtils.createMockServerForPost(
+        201,
+        400,
+        testDoc,
+        true
+      )
       mockServer.listen(constants.MEDIATOR_PORT)
       mockServerWithReturn.listen(httpPortPlus41)
     })
@@ -234,7 +260,7 @@ describe('HTTP tests', () => {
     after(async () => {
       await Promise.all([
         ChannelModelAPI.deleteMany(),
-        ClientModelAPI.deleteOne({ clientID: 'testApp' }),
+        ClientModelAPI.deleteOne({clientID: 'testApp'}),
         mockServer.close(),
         mockServerWithReturn.close()
       ])
@@ -245,7 +271,7 @@ describe('HTTP tests', () => {
     })
 
     it('should return 201 CREATED on POST', async () => {
-      await promisify(server.start)({ httpPort: SERVER_PORTS.httpPort })
+      await promisify(server.start)({httpPort: SERVER_PORTS.httpPort})
 
       await request(constants.HTTP_BASE_URL)
         .post('/test/mock')
@@ -255,7 +281,7 @@ describe('HTTP tests', () => {
     })
 
     it('should return 201 CREATED on POST - Public Channel', async () => {
-      await promisify(server.start)({ httpPort: SERVER_PORTS.httpPort })
+      await promisify(server.start)({httpPort: SERVER_PORTS.httpPort})
       await request(constants.HTTP_BASE_URL)
         .post('/public')
         .send(testDoc)
@@ -263,7 +289,7 @@ describe('HTTP tests', () => {
     })
 
     it('should return 201 CREATED on POST - Public Channel with whitelisted ip', async () => {
-      await promisify(server.start)({ httpPort: SERVER_PORTS.httpPort })
+      await promisify(server.start)({httpPort: SERVER_PORTS.httpPort})
       await request(constants.HTTP_BASE_URL)
         .post('/private')
         .send(testDoc)
@@ -271,7 +297,7 @@ describe('HTTP tests', () => {
     })
 
     it('should deny access on POST - Private Channel with whitelisted IP but incorrect client role', async () => {
-      await promisify(server.start)({ httpPort: SERVER_PORTS.httpPort })
+      await promisify(server.start)({httpPort: SERVER_PORTS.httpPort})
       await request(constants.HTTP_BASE_URL)
         .post('/un-auth')
         .send(testDoc)
@@ -280,7 +306,7 @@ describe('HTTP tests', () => {
     })
 
     it('should return 201 CREATED on POST - Private Channel with whitelisted IP and correct client role', async () => {
-      await promisify(server.start)({ httpPort: SERVER_PORTS.httpPort })
+      await promisify(server.start)({httpPort: SERVER_PORTS.httpPort})
       await request(constants.HTTP_BASE_URL)
         .post('/auth')
         .send(testDoc)
@@ -289,7 +315,7 @@ describe('HTTP tests', () => {
     })
 
     it('should return 201 CREATED on PUT', async () => {
-      await promisify(server.start)({ httpPort: SERVER_PORTS.httpPort })
+      await promisify(server.start)({httpPort: SERVER_PORTS.httpPort})
       await request(constants.HTTP_BASE_URL)
         .put('/test/mock')
         .send(testDoc)
@@ -298,7 +324,7 @@ describe('HTTP tests', () => {
     })
 
     it('should decompress gzip', async () => {
-      await promisify(server.start)({ httpPort: SERVER_PORTS.httpPort })
+      await promisify(server.start)({httpPort: SERVER_PORTS.httpPort})
       await request(constants.HTTP_BASE_URL)
         .put('/gmo')
         .set('Accept-Encoding', '') // Unset encoding, because supertest defaults to gzip,deflate
@@ -309,7 +335,7 @@ describe('HTTP tests', () => {
     })
 
     it('should returned gzipped response', async () => {
-      await promisify(server.start)({ httpPort: SERVER_PORTS.httpPort })
+      await promisify(server.start)({httpPort: SERVER_PORTS.httpPort})
       await request(constants.HTTP_BASE_URL)
         .put('/gmo')
         .set('Accept-Encoding', 'gzip')
@@ -344,12 +370,14 @@ describe('HTTP tests', () => {
         name: 'TEST DATA - Mock endpoint',
         urlPattern: 'test/mock',
         allow: ['PoC'],
-        routes: [{
-          name: 'test route',
-          host: 'localhost',
-          port: constants.MEDIATOR_PORT,
-          primary: true
-        }
+        methods: ['POST', 'PUT'],
+        routes: [
+          {
+            name: 'test route',
+            host: 'localhost',
+            port: constants.MEDIATOR_PORT,
+            primary: true
+          }
         ],
         matchContentTypes: ['text/xml'],
         matchContentXpath: 'string(/careServicesRequest/function/@uuid)',
@@ -364,12 +392,10 @@ describe('HTTP tests', () => {
         clientID: 'testApp',
         clientDomain: 'test-client.jembi.org',
         name: 'TEST Client',
-        roles: [
-          'OpenMRS_PoC',
-          'PoC'
-        ],
+        roles: ['OpenMRS_PoC', 'PoC'],
         passwordAlgorithm: 'sha512',
-        passwordHash: '28dce3506eca8bb3d9d5a9390135236e8746f15ca2d8c86b8d8e653da954e9e3632bf9d85484ee6e9b28a3ada30eec89add42012b185bd9a4a36a07ce08ce2ea',
+        passwordHash:
+          '28dce3506eca8bb3d9d5a9390135236e8746f15ca2d8c86b8d8e653da954e9e3632bf9d85484ee6e9b28a3ada30eec89add42012b185bd9a4a36a07ce08ce2ea',
         passwordSalt: '1234567890',
         cert: ''
       }
@@ -384,8 +410,8 @@ describe('HTTP tests', () => {
 
     after(async () => {
       await Promise.all([
-        ChannelModelAPI.deleteOne({ name: 'TEST DATA - Mock endpoint' }),
-        ClientModelAPI.deleteOne({ clientID: 'testApp' }),
+        ChannelModelAPI.deleteOne({name: 'TEST DATA - Mock endpoint'}),
+        ClientModelAPI.deleteOne({clientID: 'testApp'}),
         mockServer.close()
       ])
     })
@@ -395,7 +421,7 @@ describe('HTTP tests', () => {
     })
 
     it('should return 201 CREATED on POST', async () => {
-      await promisify(server.start)({ httpPort: SERVER_PORTS.httpPort })
+      await promisify(server.start)({httpPort: SERVER_PORTS.httpPort})
       await request(constants.HTTP_BASE_URL)
         .post('/test/mock')
         .set('Content-Type', 'text/xml')
@@ -405,7 +431,7 @@ describe('HTTP tests', () => {
     })
 
     it('should return 201 CREATED on PUT', async () => {
-      await promisify(server.start)({ httpPort: SERVER_PORTS.httpPort })
+      await promisify(server.start)({httpPort: SERVER_PORTS.httpPort})
       await request(constants.HTTP_BASE_URL)
         .put('/test/mock')
         .set('Content-Type', 'text/xml')
@@ -434,12 +460,14 @@ describe('HTTP tests', () => {
         name: 'TEST DATA - Mock endpoint',
         urlPattern: 'test/mock',
         allow: ['PoC'],
-        routes: [{
-          name: 'test route',
-          host: 'localhost',
-          port: constants.MEDIATOR_PORT,
-          primary: true
-        }
+        methods: ['POST', 'PUT'],
+        routes: [
+          {
+            name: 'test route',
+            host: 'localhost',
+            port: constants.MEDIATOR_PORT,
+            primary: true
+          }
         ],
         matchContentTypes: ['text/x-json', 'application/json'],
         matchContentJson: 'functionId',
@@ -454,12 +482,10 @@ describe('HTTP tests', () => {
         clientID: 'testApp',
         clientDomain: 'test-client.jembi.org',
         name: 'TEST Client',
-        roles: [
-          'OpenMRS_PoC',
-          'PoC'
-        ],
+        roles: ['OpenMRS_PoC', 'PoC'],
         passwordAlgorithm: 'sha512',
-        passwordHash: '28dce3506eca8bb3d9d5a9390135236e8746f15ca2d8c86b8d8e653da954e9e3632bf9d85484ee6e9b28a3ada30eec89add42012b185bd9a4a36a07ce08ce2ea',
+        passwordHash:
+          '28dce3506eca8bb3d9d5a9390135236e8746f15ca2d8c86b8d8e653da954e9e3632bf9d85484ee6e9b28a3ada30eec89add42012b185bd9a4a36a07ce08ce2ea',
         passwordSalt: '1234567890',
         cert: ''
       }
@@ -467,15 +493,19 @@ describe('HTTP tests', () => {
       await new ClientModelAPI(testAppDoc).save()
 
       // Create mock endpoint to forward requests to
-      mockServer = await testUtils.createMockServerForPost(201, 400, testJSONDoc)
+      mockServer = await testUtils.createMockServerForPost(
+        201,
+        400,
+        testJSONDoc
+      )
 
       mockServer.listen(constants.MEDIATOR_PORT)
     })
 
     after(async () => {
       await Promise.all([
-        ChannelModelAPI.deleteOne({ name: 'TEST DATA - Mock endpoint' }),
-        ClientModelAPI.deleteOne({ clientID: 'testApp' }),
+        ChannelModelAPI.deleteOne({name: 'TEST DATA - Mock endpoint'}),
+        ClientModelAPI.deleteOne({clientID: 'testApp'}),
         mockServer.close()
       ])
     })
@@ -485,7 +515,7 @@ describe('HTTP tests', () => {
     })
 
     it('should return 201 CREATED on POST', async () => {
-      await promisify(server.start)({ httpPort: SERVER_PORTS.httpPort })
+      await promisify(server.start)({httpPort: SERVER_PORTS.httpPort})
       await request(constants.HTTP_BASE_URL)
         .post('/test/mock')
         .set('Content-Type', 'application/json')
@@ -495,7 +525,7 @@ describe('HTTP tests', () => {
     })
 
     it('should return 201 CREATED on PUT', async () => {
-      await promisify(server.start)({ httpPort: SERVER_PORTS.httpPort })
+      await promisify(server.start)({httpPort: SERVER_PORTS.httpPort})
       await request(constants.HTTP_BASE_URL)
         .put('/test/mock')
         .set('Content-Type', 'application/json')
@@ -518,12 +548,14 @@ describe('HTTP tests', () => {
         name: 'TEST DATA - Mock endpoint',
         urlPattern: 'test/mock',
         allow: ['PoC'],
-        routes: [{
-          name: 'test route',
-          host: 'localhost',
-          port: constants.MEDIATOR_PORT,
-          primary: true
-        }
+        methods: ['POST', 'PUT'],
+        routes: [
+          {
+            name: 'test route',
+            host: 'localhost',
+            port: constants.MEDIATOR_PORT,
+            primary: true
+          }
         ],
         matchContentRegex: '\\s[A-Z]{4}\\d{3}',
         updatedBy: {
@@ -536,27 +568,29 @@ describe('HTTP tests', () => {
         clientID: 'testApp',
         clientDomain: 'test-client.jembi.org',
         name: 'TEST Client',
-        roles: [
-          'OpenMRS_PoC',
-          'PoC'
-        ],
+        roles: ['OpenMRS_PoC', 'PoC'],
         passwordAlgorithm: 'sha512',
-        passwordHash: '28dce3506eca8bb3d9d5a9390135236e8746f15ca2d8c86b8d8e653da954e9e3632bf9d85484ee6e9b28a3ada30eec89add42012b185bd9a4a36a07ce08ce2ea',
+        passwordHash:
+          '28dce3506eca8bb3d9d5a9390135236e8746f15ca2d8c86b8d8e653da954e9e3632bf9d85484ee6e9b28a3ada30eec89add42012b185bd9a4a36a07ce08ce2ea',
         passwordSalt: '1234567890',
         cert: ''
       }
 
       await new ClientModelAPI(testAppDoc).save()
       // Create mock endpoint to forward requests to
-      mockServer = await testUtils.createMockServerForPost(201, 400, testRegExDoc)
+      mockServer = await testUtils.createMockServerForPost(
+        201,
+        400,
+        testRegExDoc
+      )
 
       mockServer.listen(constants.MEDIATOR_PORT)
     })
 
     after(async () => {
       await Promise.all([
-        ChannelModelAPI.deleteOne({ name: 'TEST DATA - Mock endpoint' }),
-        ClientModelAPI.deleteOne({ clientID: 'testApp' }),
+        ChannelModelAPI.deleteOne({name: 'TEST DATA - Mock endpoint'}),
+        ClientModelAPI.deleteOne({clientID: 'testApp'}),
         mockServer.close()
       ])
     })
@@ -566,7 +600,7 @@ describe('HTTP tests', () => {
     })
 
     it('should return 201 CREATED on POST', async () => {
-      await promisify(server.start)({ httpPort: SERVER_PORTS.httpPort })
+      await promisify(server.start)({httpPort: SERVER_PORTS.httpPort})
       await request(constants.HTTP_BASE_URL)
         .post('/test/mock')
         .send(testRegExDoc)
@@ -575,7 +609,7 @@ describe('HTTP tests', () => {
     })
 
     it('should return 201 CREATED on PUT', async () => {
-      await promisify(server.start)({ httpPort: SERVER_PORTS.httpPort })
+      await promisify(server.start)({httpPort: SERVER_PORTS.httpPort})
       await request(constants.HTTP_BASE_URL)
         .put('/test/mock')
         .send(testRegExDoc)

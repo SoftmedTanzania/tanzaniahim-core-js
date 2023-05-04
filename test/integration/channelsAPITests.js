@@ -7,20 +7,20 @@ import mongoose from 'mongoose'
 import request from 'supertest'
 import should from 'should'
 import sinon from 'sinon'
-import { ObjectId } from 'mongodb'
-import { promisify } from 'util'
+import {ObjectId} from 'mongodb'
+import {promisify} from 'util'
 
 import * as constants from '../constants'
 import * as polling from '../../src/polling'
 import * as server from '../../src/server'
 import * as tcpAdapter from '../../src/tcpAdapter'
 import * as testUtils from '../utils'
-import { ChannelModelAPI } from '../../src/model/channels'
-import { ClientModelAPI } from '../../src/model/clients'
-import { TransactionModelAPI } from '../../src/model/transactions'
-import { config } from '../../src/config'
+import {ChannelModelAPI} from '../../src/model/channels'
+import {ClientModelAPI} from '../../src/model/clients'
+import {TransactionModelAPI} from '../../src/model/transactions'
+import {config} from '../../src/config'
 
-const { SERVER_PORTS } = constants
+const {SERVER_PORTS, BASE_URL} = constants
 let sandbox = sinon.createSandbox()
 
 describe('API Integration Tests', () => {
@@ -31,12 +31,13 @@ describe('API Integration Tests', () => {
       name: 'TestChannel1',
       urlPattern: 'test/sample',
       allow: ['PoC', 'Test1', 'Test2'],
-      routes: [{
-        name: 'test route',
-        host: 'localhost',
-        port: 9876,
-        primary: true
-      }
+      routes: [
+        {
+          name: 'test route',
+          host: 'localhost',
+          port: 9876,
+          primary: true
+        }
       ],
       txViewAcl: 'aGroup',
       updatedBy: {
@@ -49,12 +50,13 @@ describe('API Integration Tests', () => {
       name: 'TestChannel2',
       urlPattern: 'test/sample',
       allow: ['PoC', 'Test1', 'Test2'],
-      routes: [{
-        name: 'test route',
-        host: 'localhost',
-        port: 9876,
-        primary: true
-      }
+      routes: [
+        {
+          name: 'test route',
+          host: 'localhost',
+          port: 9876,
+          primary: true
+        }
       ],
       txViewAcl: 'group1',
       updatedBy: {
@@ -63,16 +65,16 @@ describe('API Integration Tests', () => {
       }
     }
 
-    let authDetails = {}
+    let rootCookie = '',
+      nonRootCookie = ''
 
     before(async () => {
-      await testUtils.setupTestUsers()
       await promisify(server.start)({
         apiPort: SERVER_PORTS.apiPort,
         tcpHttpReceiverPort: SERVER_PORTS.tcpHttpReceiverPort,
         pollingPort: SERVER_PORTS.pollingPort
       })
-      authDetails = await testUtils.getAuthDetails()
+      await testUtils.setupTestUsers()
       await Promise.all([
         TransactionModelAPI.deleteMany({}),
         ChannelModelAPI.deleteMany({})
@@ -97,33 +99,38 @@ describe('API Integration Tests', () => {
         TransactionModelAPI.deleteMany({}),
         ChannelModelAPI.deleteMany({})
       ])
-      const ch1 = await (new ChannelModelAPI(channel1)).save()
+      const ch1 = await new ChannelModelAPI(channel1).save()
       channel1._id = ch1._id
-      const ch2 = await (new ChannelModelAPI(channel2)).save()
+      const ch2 = await new ChannelModelAPI(channel2).save()
       channel2._id = ch2._id
       sandbox.stub(tcpAdapter, 'notifyMasterToStartTCPServer')
       sandbox.stub(tcpAdapter, 'notifyMasterToStopTCPServer')
+
+      rootCookie = await testUtils.authenticate(
+        request,
+        BASE_URL,
+        testUtils.rootUser
+      )
+      nonRootCookie = await testUtils.authenticate(
+        request,
+        BASE_URL,
+        testUtils.nonRootUser
+      )
     })
 
     describe('*getChannels()', () => {
       it('should fetch all channels', async () => {
-        const result = await request(constants.BASE_URL)
+        const result = await request(BASE_URL)
           .get('/channels')
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .expect(200)
         result.body.length.should.be.eql(2)
       })
 
       it('should only allow non root user to fetch channel that they are allowed to view', async () => {
-        const result = await request(constants.BASE_URL)
+        const result = await request(BASE_URL)
           .get('/channels')
-          .set('auth-username', testUtils.nonRootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', nonRootCookie)
           .expect(200)
         result.body.length.should.be.eql(1)
         result.body[0].name.should.be.eql('TestChannel2')
@@ -136,22 +143,21 @@ describe('API Integration Tests', () => {
           name: 'NewChannel',
           urlPattern: 'test/sample',
           allow: ['PoC', 'Test1', 'Test2'],
-          routes: [{
-            name: 'test route',
-            host: 'localhost',
-            port: 9876,
-            primary: true
-          }]
+          routes: [
+            {
+              name: 'test route',
+              host: 'localhost',
+              port: 9876,
+              primary: true
+            }
+          ]
         }
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .post('/channels')
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .send(newChannel)
           .expect(201)
-        const channel = await ChannelModelAPI.findOne({ name: 'NewChannel' })
+        const channel = await ChannelModelAPI.findOne({name: 'NewChannel'})
         channel.should.have.property('urlPattern', 'test/sample')
         channel.allow.should.have.length(3)
       })
@@ -160,20 +166,19 @@ describe('API Integration Tests', () => {
         const newChannel = {
           urlPattern: 'test/sample',
           allow: ['PoC', 'Test1', 'Test2'],
-          routes: [{
-            name: 'test route',
-            host: 'localhost',
-            port: 9876,
-            primary: true
-          }]
+          routes: [
+            {
+              name: 'test route',
+              host: 'localhost',
+              port: 9876,
+              primary: true
+            }
+          ]
         }
 
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .post('/channels')
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .send(newChannel)
           .expect(400)
       })
@@ -183,21 +188,20 @@ describe('API Integration Tests', () => {
           name: 'InvalidChannel',
           urlPattern: 'test/sample',
           allow: ['PoC', 'Test1', 'Test2'],
-          routes: [{
-            name: 'test route',
-            host: 'localhost',
-            pathTransform: 'invalid',
-            port: 9876,
-            primary: true
-          }]
+          routes: [
+            {
+              name: 'test route',
+              host: 'localhost',
+              pathTransform: 'invalid',
+              port: 9876,
+              primary: true
+            }
+          ]
         }
 
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .post('/channels')
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .send(invalidChannel)
           .expect(400)
       })
@@ -207,22 +211,21 @@ describe('API Integration Tests', () => {
           name: 'InvalidChannel',
           urlPattern: 'test/sample',
           allow: ['PoC', 'Test1', 'Test2'],
-          routes: [{
-            name: 'test route',
-            host: 'localhost',
-            path: '/target',
-            pathTransform: 's/foo/bar',
-            port: 9876,
-            primary: true
-          }]
+          routes: [
+            {
+              name: 'test route',
+              host: 'localhost',
+              path: '/target',
+              pathTransform: 's/foo/bar',
+              port: 9876,
+              primary: true
+            }
+          ]
         }
 
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .post('/channels')
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .send(invalidChannel)
           .expect(400)
       })
@@ -230,12 +233,9 @@ describe('API Integration Tests', () => {
       it('should not allow a non admin user to add a channel', async () => {
         const newChannel = {}
 
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .post('/channels')
-          .set('auth-username', testUtils.nonRootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', nonRootCookie)
           .send(newChannel)
           .expect(403)
       })
@@ -248,21 +248,20 @@ describe('API Integration Tests', () => {
           type: 'tcp',
           tcpHost: '0.0.0.0',
           tcpPort: SERVER_PORTS.tcpPort,
-          routes: [{
-            name: 'TcpRoute',
-            host: 'localhost',
-            port: 9876,
-            primary: true,
-            type: 'tcp'
-          }]
+          routes: [
+            {
+              name: 'TcpRoute',
+              host: 'localhost',
+              port: 9876,
+              primary: true,
+              type: 'tcp'
+            }
+          ]
         }
 
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .post('/channels')
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .send(tcpChannel)
           .expect(201)
 
@@ -277,22 +276,21 @@ describe('API Integration Tests', () => {
           type: 'tcp',
           tcpHost: '0.0.0.0',
           tcpPort: SERVER_PORTS.tcpPort,
-          routes: [{
-            name: 'TcpRoute',
-            host: 'localhost',
-            port: 9876,
-            primary: true,
-            type: 'tcp'
-          }],
+          routes: [
+            {
+              name: 'TcpRoute',
+              host: 'localhost',
+              port: 9876,
+              primary: true,
+              type: 'tcp'
+            }
+          ],
           status: 'disabled'
         }
 
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .post('/channels')
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .send(tcpChannelDisabled)
           .expect(201)
         sinon.assert.notCalled(tcpAdapter.notifyMasterToStartTCPServer)
@@ -305,28 +303,29 @@ describe('API Integration Tests', () => {
           allow: ['polling'],
           type: 'polling',
           pollingSchedule: '5 * * * *',
-          routes: [{
-            name: 'PollRoute',
-            host: 'localhost',
-            port: 9876,
-            primary: true
-          }]
+          routes: [
+            {
+              name: 'PollRoute',
+              host: 'localhost',
+              port: 9876,
+              primary: true
+            }
+          ]
         }
 
         const spy = sinon.spy(polling, 'registerPollingChannel')
 
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .post('/channels')
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .send(pollChannel)
           .expect(201)
 
         spy.restore()
         spy.calledOnce.should.be.true()
-        spy.getCall(0).args[0].should.have.property('name', 'POLLINGTestChannel-Add')
+        spy
+          .getCall(0)
+          .args[0].should.have.property('name', 'POLLINGTestChannel-Add')
         spy.getCall(0).args[0].should.have.property('urlPattern', '/trigger')
         spy.getCall(0).args[0].should.have.property('type', 'polling')
       })
@@ -338,23 +337,22 @@ describe('API Integration Tests', () => {
           allow: ['polling'],
           type: 'polling',
           pollingSchedule: '5 * * * *',
-          routes: [{
-            name: 'PollRoute',
-            host: 'localhost',
-            port: 9876,
-            primary: true
-          }],
+          routes: [
+            {
+              name: 'PollRoute',
+              host: 'localhost',
+              port: 9876,
+              primary: true
+            }
+          ],
           status: 'disabled'
         }
 
         const spy = sinon.spy(polling, 'registerPollingChannel')
 
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .post('/channels')
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .send(pollChannelDisabled)
           .expect(201)
         spy.restore()
@@ -366,19 +364,18 @@ describe('API Integration Tests', () => {
           name: 'no-primary-route-test',
           urlPattern: 'test/sample',
           allow: ['PoC', 'Test1', 'Test2'],
-          routes: [{
-            name: 'test route',
-            host: 'localhost',
-            port: 9876
-          }]
+          routes: [
+            {
+              name: 'test route',
+              host: 'localhost',
+              port: 9876
+            }
+          ]
         }
 
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .post('/channels')
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .send(newChannel)
           .expect(400)
       })
@@ -394,20 +391,19 @@ describe('API Integration Tests', () => {
               host: 'localhost',
               port: 9876,
               primary: true
-            }, {
+            },
+            {
               name: 'test route 2',
               host: 'localhost',
               port: 9877,
               primary: true
-            }]
+            }
+          ]
         }
 
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .post('/channels')
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .send(newChannel)
           .expect(400)
       })
@@ -423,21 +419,20 @@ describe('API Integration Tests', () => {
               host: 'localhost',
               port: 9876,
               primary: true
-            }, {
+            },
+            {
               name: 'test route 2',
               host: 'localhost',
               port: 9877,
               primary: true,
               status: 'disabled'
-            }]
+            }
+          ]
         }
 
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .post('/channels')
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .send(newChannel)
           .expect(201)
       })
@@ -448,20 +443,19 @@ describe('API Integration Tests', () => {
           urlPattern: 'test/sample',
           priority: -1,
           allow: ['PoC', 'Test1', 'Test2'],
-          routes: [{
-            name: 'test route',
-            host: 'localhost',
-            port: 9876,
-            primary: true
-          }]
+          routes: [
+            {
+              name: 'test route',
+              host: 'localhost',
+              port: 9876,
+              primary: true
+            }
+          ]
         }
 
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .post('/channels')
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .send(newChannel)
           .expect(400)
       })
@@ -471,24 +465,25 @@ describe('API Integration Tests', () => {
           name: 'method channel',
           urlPattern: 'test/method',
           methods: ['GET', 'OPTIONS'],
-          routes: [{
-            name: 'test route',
-            host: 'localhost',
-            port: 9876,
-            primary: true
-          }]
+          routes: [
+            {
+              name: 'test route',
+              host: 'localhost',
+              port: 9876,
+              primary: true
+            }
+          ]
         }
 
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .post('/channels')
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .send(methodChannelDoc)
           .expect(201)
 
-        const channel = await ChannelModelAPI.findOne({ name: methodChannelDoc.name })
+        const channel = await ChannelModelAPI.findOne({
+          name: methodChannelDoc.name
+        })
         channel.methods.should.containDeep(methodChannelDoc.methods)
       })
 
@@ -498,24 +493,25 @@ describe('API Integration Tests', () => {
           urlPattern: 'test/method',
           type: 'tcp',
           methods: ['GET', 'OPTIONS'],
-          routes: [{
-            name: 'test route',
-            host: 'localhost',
-            port: 9876,
-            primary: true
-          }]
+          routes: [
+            {
+              name: 'test route',
+              host: 'localhost',
+              port: 9876,
+              primary: true
+            }
+          ]
         }
 
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .post('/channels')
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .send(methodChannelDocRejected)
           .expect(400)
 
-        const channelCount = await ChannelModelAPI.countDocuments({ name: methodChannelDocRejected.name })
+        const channelCount = await ChannelModelAPI.countDocuments({
+          name: methodChannelDocRejected.name
+        })
         channelCount.should.eql(0)
       })
 
@@ -525,25 +521,28 @@ describe('API Integration Tests', () => {
           urlPattern: 'test/method',
           type: 'http',
           methods: ['POST', 'POST', 'GET', 'OPTIONS', 'GET'],
-          routes: [{
-            name: 'test route',
-            host: 'localhost',
-            port: 9876,
-            primary: true
-          }]
+          routes: [
+            {
+              name: 'test route',
+              host: 'localhost',
+              port: 9876,
+              primary: true
+            }
+          ]
         }
 
-        const res = await request(constants.BASE_URL)
+        const res = await request(BASE_URL)
           .post('/channels')
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .send(methodChannelDocRejected)
           .expect(400)
 
-        res.text.should.eql("Channel methods can't be repeated. Repeated methods are GET, POST")
-        const channelCount = await ChannelModelAPI.countDocuments({ name: methodChannelDocRejected.name })
+        res.text.should.eql(
+          "Channel methods can't be repeated. Repeated methods are GET, POST"
+        )
+        const channelCount = await ChannelModelAPI.countDocuments({
+          name: methodChannelDocRejected.name
+        })
         channelCount.should.eql(0)
       })
 
@@ -552,24 +551,25 @@ describe('API Integration Tests', () => {
           name: 'maxBodyAgeRejected',
           urlPattern: 'test/method',
           maxBodyAgeDays: 5,
-          routes: [{
-            name: 'test route',
-            host: 'localhost',
-            port: 9876,
-            primary: true
-          }]
+          routes: [
+            {
+              name: 'test route',
+              host: 'localhost',
+              port: 9876,
+              primary: true
+            }
+          ]
         }
 
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .post('/channels')
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .send(methodChannelDoc)
           .expect(400)
 
-        const channelCount = await ChannelModelAPI.countDocuments({ name: methodChannelDoc.name })
+        const channelCount = await ChannelModelAPI.countDocuments({
+          name: methodChannelDoc.name
+        })
         channelCount.should.eql(0)
       })
 
@@ -579,24 +579,25 @@ describe('API Integration Tests', () => {
           urlPattern: 'test/method',
           maxBodyAgeDays: 36501,
           requestBody: true,
-          routes: [{
-            name: 'test route',
-            host: 'localhost',
-            port: 9876,
-            primary: true
-          }]
+          routes: [
+            {
+              name: 'test route',
+              host: 'localhost',
+              port: 9876,
+              primary: true
+            }
+          ]
         }
 
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .post('/channels')
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .send(methodChannelDoc)
           .expect(400)
 
-        const channelCount = await ChannelModelAPI.countDocuments({ name: methodChannelDoc.name })
+        const channelCount = await ChannelModelAPI.countDocuments({
+          name: methodChannelDoc.name
+        })
         channelCount.should.eql(0)
       })
 
@@ -607,24 +608,25 @@ describe('API Integration Tests', () => {
           maxBodyAgeDays: 5,
           requestBody: true,
           responseBody: true,
-          routes: [{
-            name: 'test route',
-            host: 'localhost',
-            port: 9876,
-            primary: true
-          }]
+          routes: [
+            {
+              name: 'test route',
+              host: 'localhost',
+              port: 9876,
+              primary: true
+            }
+          ]
         }
 
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .post('/channels')
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .send(methodChannelDoc)
           .expect(201)
 
-        const channel = await ChannelModelAPI.findOne({ name: methodChannelDoc.name })
+        const channel = await ChannelModelAPI.findOne({
+          name: methodChannelDoc.name
+        })
         channel.maxBodyAgeDays.should.eql(5)
       })
 
@@ -633,24 +635,25 @@ describe('API Integration Tests', () => {
           name: 'timeout',
           urlPattern: 'test/method',
           timeout: 10,
-          routes: [{
-            name: 'test route',
-            host: 'localhost',
-            port: 9876,
-            primary: true
-          }]
+          routes: [
+            {
+              name: 'test route',
+              host: 'localhost',
+              port: 9876,
+              primary: true
+            }
+          ]
         }
 
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .post('/channels')
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .send(timeoutChannelDoc)
           .expect(201)
 
-        const channel = await ChannelModelAPI.findOne({ name: timeoutChannelDoc.name })
+        const channel = await ChannelModelAPI.findOne({
+          name: timeoutChannelDoc.name
+        })
         channel.timeout.should.eql(10)
       })
 
@@ -659,36 +662,34 @@ describe('API Integration Tests', () => {
           name: 'timeout',
           urlPattern: 'test/method',
           timeout: -1,
-          routes: [{
-            name: 'test route',
-            host: 'localhost',
-            port: 9876,
-            primary: true
-          }]
+          routes: [
+            {
+              name: 'test route',
+              host: 'localhost',
+              port: 9876,
+              primary: true
+            }
+          ]
         }
 
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .post('/channels')
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .send(timeoutChannelDoc)
           .expect(400)
 
-        const channel = await ChannelModelAPI.findOne({ name: timeoutChannelDoc.name })
+        const channel = await ChannelModelAPI.findOne({
+          name: timeoutChannelDoc.name
+        })
         should(channel).null()
       })
     })
 
     describe('*getChannel(channelId)', () => {
       it('should fetch a specific channel by id', async () => {
-        const res = await request(constants.BASE_URL)
+        const res = await request(BASE_URL)
           .get(`/channels/${channel1._id}`)
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .expect(200)
         res.body.should.have.property('name', 'TestChannel1')
         res.body.should.have.property('urlPattern', 'test/sample')
@@ -696,22 +697,16 @@ describe('API Integration Tests', () => {
       })
 
       it('should not allow a non admin user from fetching a channel they dont have access to by name', async () => {
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .get(`/channels/${channel1._id}`)
-          .set('auth-username', testUtils.nonRootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', nonRootCookie)
           .expect(403)
       })
 
       it('should allow a non admin user to fetch a channel they have access to by name', async () => {
-        const res = await request(constants.BASE_URL)
+        const res = await request(BASE_URL)
           .get(`/channels/${channel2._id}`)
-          .set('auth-username', testUtils.nonRootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', nonRootCookie)
           .expect(200)
         res.body.should.have.property('name', 'TestChannel2')
         res.body.should.have.property('urlPattern', 'test/sample')
@@ -723,37 +718,36 @@ describe('API Integration Tests', () => {
         const noMethodChannelDoc = {
           name: 'method channel',
           urlPattern: 'test/method',
-          routes: [{
-            name: 'test route',
-            host: 'localhost',
-            port: 9876,
-            primary: true
-          }],
+          routes: [
+            {
+              name: 'test route',
+              host: 'localhost',
+              port: 9876,
+              primary: true
+            }
+          ],
           updatedBy: {
             id: new ObjectId(),
             name: 'Test'
           }
         }
 
-        const { insertedId: id } = await mongoClient.db().collection('channels').insertOne(noMethodChannelDoc)
-        const resp = await request(constants.BASE_URL)
+        const {insertedId: id} = await mongoClient
+          .db()
+          .collection('channels')
+          .insertOne(noMethodChannelDoc)
+        const resp = await request(BASE_URL)
           .get(`/channels/${id.toString()}`)
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .expect(200)
 
         resp.body.should.property('methods')
       })
 
       it('should return a 404 if that channel doesnt exist', async () => {
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .get('/channels/999999999999999999999999')
-          .set('auth-username', testUtils.nonRootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', nonRootCookie)
           .expect(404)
       })
     })
@@ -835,34 +829,32 @@ describe('API Integration Tests', () => {
             }
           }
         ])
-        expectedPatches = patches.reverse().filter(patch => patch.ref.equals(channel1._id)).filter(patch => patch.ops[0].path !== '/lastBodyCleared').map(patch => {
-          const convertedPatch = patch.toObject()
-          convertedPatch._id = convertedPatch._id.toString()
-          convertedPatch.ref = convertedPatch.ref.toString()
-          convertedPatch.date = convertedPatch.date.toISOString()
-          convertedPatch.updatedBy.id = convertedPatch.updatedBy.id.toString()
-          return convertedPatch
-        })
+        expectedPatches = patches
+          .reverse()
+          .filter(patch => patch.ref.equals(channel1._id))
+          .filter(patch => patch.ops[0].path !== '/lastBodyCleared')
+          .map(patch => {
+            const convertedPatch = patch.toObject()
+            convertedPatch._id = convertedPatch._id.toString()
+            convertedPatch.ref = convertedPatch.ref.toString()
+            convertedPatch.date = convertedPatch.date.toISOString()
+            convertedPatch.updatedBy.id = convertedPatch.updatedBy.id.toString()
+            return convertedPatch
+          })
       })
 
       it('should return the patches for the correct channel', async () => {
-        const res = await request(constants.BASE_URL)
+        const res = await request(BASE_URL)
           .get(`/channels/${channel1._id}/audits`)
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .expect(200)
         res.body.should.eql(expectedPatches)
       })
 
       it('should return an empty array when the channel does not exist', async () => {
-        const res = await request(constants.BASE_URL)
+        const res = await request(BASE_URL)
           .get('/channels/59f6d57b07552f280271efac/audits')
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .expect(200)
         res.body.should.eql([])
       })
@@ -874,28 +866,27 @@ describe('API Integration Tests', () => {
           _id: 'thisShouldBeIgnored',
           urlPattern: 'test/changed',
           allow: ['PoC', 'Test1', 'Test2', 'another'],
-          routes: [{
-            name: 'test route',
-            host: 'localhost',
-            port: 9876,
-            primary: true
-          },
-          {
-            name: 'test route2',
-            host: 'localhost',
-            port: 8899
-          }]
+          routes: [
+            {
+              name: 'test route',
+              host: 'localhost',
+              port: 9876,
+              primary: true
+            },
+            {
+              name: 'test route2',
+              host: 'localhost',
+              port: 8899
+            }
+          ]
         }
 
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .put(`/channels/${channel1._id}`)
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .send(updates)
           .expect(200)
-        const channel = await ChannelModelAPI.findOne({ name: 'TestChannel1' })
+        const channel = await ChannelModelAPI.findOne({name: 'TestChannel1'})
         channel.should.have.property('name', 'TestChannel1')
         channel.should.have.property('urlPattern', 'test/changed')
         channel.allow.should.have.length(4)
@@ -904,12 +895,9 @@ describe('API Integration Tests', () => {
 
       it('should not allow a non admin user to update a channel', async () => {
         const updates = {}
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .put(`/channels/${channel1._id}`)
-          .set('auth-username', testUtils.nonRootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', nonRootCookie)
           .send(updates)
           .expect(403)
       })
@@ -919,12 +907,14 @@ describe('API Integration Tests', () => {
           name: 'TestChannelForTCPUpdate',
           urlPattern: '/',
           allow: ['test'],
-          routes: [{
-            name: 'test route',
-            host: 'localhost',
-            port: 9876,
-            primary: true
-          }],
+          routes: [
+            {
+              name: 'test route',
+              host: 'localhost',
+              port: 9876,
+              primary: true
+            }
+          ],
           txViewAcl: 'group1',
           updatedBy: {
             id: new ObjectId(),
@@ -939,12 +929,9 @@ describe('API Integration Tests', () => {
         }
 
         await httpChannel.save()
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .put(`/channels/${httpChannel._id}`)
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .send(changeToTCP)
           .expect(200)
 
@@ -956,12 +943,14 @@ describe('API Integration Tests', () => {
           name: 'TestChannelForTCPUpdate-Disabled',
           urlPattern: '/',
           allow: ['test'],
-          routes: [{
-            name: 'test route',
-            host: 'localhost',
-            port: 9876,
-            primary: true
-          }],
+          routes: [
+            {
+              name: 'test route',
+              host: 'localhost',
+              port: 9876,
+              primary: true
+            }
+          ],
           txViewAcl: 'group1',
           updatedBy: {
             id: new ObjectId(),
@@ -977,12 +966,9 @@ describe('API Integration Tests', () => {
         }
 
         await httpChannel.save()
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .put(`/channels/${httpChannel._id}`)
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .send(changeToTCPDisabled)
           .expect(200)
         sinon.assert.notCalled(tcpAdapter.notifyMasterToStartTCPServer)
@@ -996,12 +982,14 @@ describe('API Integration Tests', () => {
           allow: ['polling'],
           type: 'polling',
           pollingSchedule: '5 * * * *',
-          routes: [{
-            name: 'PollRoute',
-            host: 'localhost',
-            port: 9876,
-            primary: true
-          }],
+          routes: [
+            {
+              name: 'PollRoute',
+              host: 'localhost',
+              port: 9876,
+              primary: true
+            }
+          ],
           updatedBy: {
             id: new ObjectId(),
             name: 'Test'
@@ -1011,17 +999,16 @@ describe('API Integration Tests', () => {
         const spy = sinon.spy(polling, 'registerPollingChannel')
 
         await pollChannel.save()
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .put(`/channels/${pollChannel._id}`)
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .send(pollChannel)
           .expect(200)
         spy.restore()
         spy.calledOnce.should.be.true()
-        spy.getCall(0).args[0].should.have.property('name', 'POLLINGTestChannel-Update')
+        spy
+          .getCall(0)
+          .args[0].should.have.property('name', 'POLLINGTestChannel-Update')
         spy.getCall(0).args[0].should.have.property('urlPattern', '/trigger')
         spy.getCall(0).args[0].should.have.property('type', 'polling')
         spy.getCall(0).args[0].should.have.property('_id', pollChannel._id)
@@ -1034,12 +1021,14 @@ describe('API Integration Tests', () => {
           allow: ['polling'],
           type: 'polling',
           pollingSchedule: '5 * * * *',
-          routes: [{
-            name: 'PollRoute',
-            host: 'localhost',
-            port: 9876,
-            primary: true
-          }],
+          routes: [
+            {
+              name: 'PollRoute',
+              host: 'localhost',
+              port: 9876,
+              primary: true
+            }
+          ],
           status: 'disabled',
           updatedBy: {
             id: new ObjectId(),
@@ -1050,12 +1039,9 @@ describe('API Integration Tests', () => {
         const spy = sinon.spy(polling, 'registerPollingChannel')
 
         await pollChannel.save()
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .put(`/channels/${pollChannel._id}`)
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .send(pollChannel)
           .expect(200)
         spy.restore()
@@ -1066,24 +1052,23 @@ describe('API Integration Tests', () => {
         const updates = {
           urlPattern: 'test/changed',
           allow: ['PoC', 'Test1', 'Test2', 'another'],
-          routes: [{
-            name: 'test route',
-            host: 'localhost',
-            port: 9876
-          },
-          {
-            name: 'test route2',
-            host: 'localhost',
-            port: 8899
-          }]
+          routes: [
+            {
+              name: 'test route',
+              host: 'localhost',
+              port: 9876
+            },
+            {
+              name: 'test route2',
+              host: 'localhost',
+              port: 8899
+            }
+          ]
         }
 
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .put(`/channels/${channel1._id}`)
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .send(updates)
           .expect(400)
       })
@@ -1092,26 +1077,25 @@ describe('API Integration Tests', () => {
         const updates = {
           urlPattern: 'test/changed',
           allow: ['PoC', 'Test1', 'Test2', 'another'],
-          routes: [{
-            name: 'test route',
-            host: 'localhost',
-            port: 9876,
-            primary: true
-          },
-          {
-            name: 'test route2',
-            host: 'localhost',
-            port: 8899,
-            primary: true
-          }]
+          routes: [
+            {
+              name: 'test route',
+              host: 'localhost',
+              port: 9876,
+              primary: true
+            },
+            {
+              name: 'test route2',
+              host: 'localhost',
+              port: 8899,
+              primary: true
+            }
+          ]
         }
 
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .put(`/channels/${channel1._id}`)
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .send(updates)
           .expect(400)
       })
@@ -1120,27 +1104,26 @@ describe('API Integration Tests', () => {
         const updates = {
           urlPattern: 'test/changed',
           allow: ['PoC', 'Test1', 'Test2', 'another'],
-          routes: [{
-            name: 'test route',
-            host: 'localhost',
-            port: 9876,
-            primary: true
-          },
-          {
-            name: 'test route2',
-            host: 'localhost',
-            port: 8899,
-            primary: true,
-            status: 'disabled'
-          }]
+          routes: [
+            {
+              name: 'test route',
+              host: 'localhost',
+              port: 9876,
+              primary: true
+            },
+            {
+              name: 'test route2',
+              host: 'localhost',
+              port: 8899,
+              primary: true,
+              status: 'disabled'
+            }
+          ]
         }
 
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .put(`/channels/${channel1._id}`)
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .send(updates)
           .expect(200)
       })
@@ -1151,15 +1134,12 @@ describe('API Integration Tests', () => {
           priority: -1
         }
 
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .put(`/channels/${channel1._id}`)
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .send(updates)
           .expect(400)
-        const channel = await ChannelModelAPI.findOne({ name: 'TestChannel1' })
+        const channel = await ChannelModelAPI.findOne({name: 'TestChannel1'})
         channel.should.have.property('urlPattern', 'test/sample')
       })
 
@@ -1168,27 +1148,28 @@ describe('API Integration Tests', () => {
           name: 'method channel',
           urlPattern: 'test/method',
           methods: ['GET', 'OPTIONS'],
-          routes: [{
-            name: 'test route',
-            host: 'localhost',
-            port: 9876,
-            primary: true
-          }],
+          routes: [
+            {
+              name: 'test route',
+              host: 'localhost',
+              port: 9876,
+              primary: true
+            }
+          ],
           updatedBy: {
             id: new ObjectId(),
             name: 'Test'
           }
         }
 
-        const { _id: channelId } = await new ChannelModelAPI(methodChannelDoc).save()
+        const {_id: channelId} = await new ChannelModelAPI(
+          methodChannelDoc
+        ).save()
 
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .put(`/channels/${channelId}`)
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
-          .send({ type: 'tcp' })
+          .set('Cookie', rootCookie)
+          .send({type: 'tcp'})
           .expect(200)
 
         const channel = await ChannelModelAPI.findById(channelId)
@@ -1201,27 +1182,28 @@ describe('API Integration Tests', () => {
           name: 'method channel',
           urlPattern: 'test/method',
           type: 'tcp',
-          routes: [{
-            name: 'test route',
-            host: 'localhost',
-            port: 9876,
-            primary: true
-          }],
+          routes: [
+            {
+              name: 'test route',
+              host: 'localhost',
+              port: 9876,
+              primary: true
+            }
+          ],
           updatedBy: {
             id: new ObjectId(),
             name: 'Test'
           }
         }
 
-        const { _id: channelId } = await new ChannelModelAPI(methodChannelDoc).save()
+        const {_id: channelId} = await new ChannelModelAPI(
+          methodChannelDoc
+        ).save()
 
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .put(`/channels/${channelId}`)
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
-          .send({ methods: ['GET'] })
+          .set('Cookie', rootCookie)
+          .send({methods: ['GET']})
           .expect(400)
 
         const channel = await ChannelModelAPI.findById(channelId)
@@ -1233,27 +1215,28 @@ describe('API Integration Tests', () => {
         const methodChannelDoc = {
           name: 'method channel',
           urlPattern: 'test/method',
-          routes: [{
-            name: 'test route',
-            host: 'localhost',
-            port: 9876,
-            primary: true
-          }],
+          routes: [
+            {
+              name: 'test route',
+              host: 'localhost',
+              port: 9876,
+              primary: true
+            }
+          ],
           updatedBy: {
             id: new ObjectId(),
             name: 'Test'
           }
         }
 
-        const { _id: channelId } = await new ChannelModelAPI(methodChannelDoc).save()
+        const {_id: channelId} = await new ChannelModelAPI(
+          methodChannelDoc
+        ).save()
 
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .put(`/channels/${channelId}`)
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
-          .send({ methods: ['GET'] })
+          .set('Cookie', rootCookie)
+          .send({methods: ['GET']})
           .expect(200)
 
         const channel = await ChannelModelAPI.findById(channelId)
@@ -1267,12 +1250,14 @@ describe('API Integration Tests', () => {
           name: 'method channel rejected',
           urlPattern: 'test/method',
           type: 'http',
-          routes: [{
-            name: 'test route',
-            host: 'localhost',
-            port: 9876,
-            primary: true
-          }],
+          routes: [
+            {
+              name: 'test route',
+              host: 'localhost',
+              port: 9876,
+              primary: true
+            }
+          ],
           updatedBy: {
             id: new ObjectId(),
             name: 'Test'
@@ -1283,19 +1268,22 @@ describe('API Integration Tests', () => {
           methods: ['POST', 'POST', 'GET', 'OPTIONS', 'GET']
         }
 
-        const { _id: channelId } = await new ChannelModelAPI(methodChannelDocRejected).save()
+        const {_id: channelId} = await new ChannelModelAPI(
+          methodChannelDocRejected
+        ).save()
 
-        const res = await request(constants.BASE_URL)
+        const res = await request(BASE_URL)
           .put(`/channels/${channelId}`)
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .send(methodUpdate)
           .expect(400)
 
-        res.text.should.eql("Channel methods can't be repeated. Repeated methods are GET, POST")
-        const channelCount = await ChannelModelAPI.countDocuments({ name: methodChannelDocRejected.name })
+        res.text.should.eql(
+          "Channel methods can't be repeated. Repeated methods are GET, POST"
+        )
+        const channelCount = await ChannelModelAPI.countDocuments({
+          name: methodChannelDocRejected.name
+        })
         channelCount.should.eql(1)
         const channel = await ChannelModelAPI.findById(channelId)
         channel.methods.length.should.eql(0)
@@ -1305,27 +1293,28 @@ describe('API Integration Tests', () => {
         const methodChannelDoc = {
           name: 'method channel',
           urlPattern: 'test/method',
-          routes: [{
-            name: 'test route',
-            host: 'localhost',
-            port: 9876,
-            primary: true
-          }],
+          routes: [
+            {
+              name: 'test route',
+              host: 'localhost',
+              port: 9876,
+              primary: true
+            }
+          ],
           updatedBy: {
             id: new ObjectId(),
             name: 'Test'
           }
         }
 
-        const { _id: channelId } = await new ChannelModelAPI(methodChannelDoc).save()
+        const {_id: channelId} = await new ChannelModelAPI(
+          methodChannelDoc
+        ).save()
 
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .put(`/channels/${channelId}`)
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
-          .send({ maxBodyAgeDays: 2 })
+          .set('Cookie', rootCookie)
+          .send({maxBodyAgeDays: 2})
           .expect(400)
 
         const channel = await ChannelModelAPI.findById(channelId)
@@ -1337,27 +1326,28 @@ describe('API Integration Tests', () => {
           name: 'method channel',
           urlPattern: 'test/method',
           requestBody: true,
-          routes: [{
-            name: 'test route',
-            host: 'localhost',
-            port: 9876,
-            primary: true
-          }],
+          routes: [
+            {
+              name: 'test route',
+              host: 'localhost',
+              port: 9876,
+              primary: true
+            }
+          ],
           updatedBy: {
             id: new ObjectId(),
             name: 'Test'
           }
         }
 
-        const { _id: channelId } = await new ChannelModelAPI(methodChannelDoc).save()
+        const {_id: channelId} = await new ChannelModelAPI(
+          methodChannelDoc
+        ).save()
 
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .put(`/channels/${channelId}`)
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
-          .send({ maxBodyAgeDays: 2 })
+          .set('Cookie', rootCookie)
+          .send({maxBodyAgeDays: 2})
           .expect(200)
 
         const channel = await ChannelModelAPI.findById(channelId)
@@ -1369,27 +1359,28 @@ describe('API Integration Tests', () => {
           name: 'method channel',
           urlPattern: 'test/method',
           requestBody: true,
-          routes: [{
-            name: 'test route',
-            host: 'localhost',
-            port: 9876,
-            primary: true
-          }],
+          routes: [
+            {
+              name: 'test route',
+              host: 'localhost',
+              port: 9876,
+              primary: true
+            }
+          ],
           updatedBy: {
             id: new ObjectId(),
             name: 'Test'
           }
         }
 
-        const { _id: channelId } = await new ChannelModelAPI(methodChannelDoc).save()
+        const {_id: channelId} = await new ChannelModelAPI(
+          methodChannelDoc
+        ).save()
 
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .put(`/channels/${channelId}`)
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
-          .send({ maxBodyAgeDays: -1 })
+          .set('Cookie', rootCookie)
+          .send({maxBodyAgeDays: -1})
           .expect(400)
 
         const channel = await ChannelModelAPI.findById(channelId)
@@ -1401,27 +1392,28 @@ describe('API Integration Tests', () => {
           name: 'method channel',
           urlPattern: 'test/method',
           requestBody: true,
-          routes: [{
-            name: 'test route',
-            host: 'localhost',
-            port: 9876,
-            primary: true
-          }],
+          routes: [
+            {
+              name: 'test route',
+              host: 'localhost',
+              port: 9876,
+              primary: true
+            }
+          ],
           updatedBy: {
             id: new ObjectId(),
             name: 'Test'
           }
         }
 
-        const { _id: channelId } = await new ChannelModelAPI(methodChannelDoc).save()
+        const {_id: channelId} = await new ChannelModelAPI(
+          methodChannelDoc
+        ).save()
 
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .put(`/channels/${channelId}`)
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
-          .send({ maxBodyAgeDays: 36501 })
+          .set('Cookie', rootCookie)
+          .send({maxBodyAgeDays: 36501})
           .expect(400)
 
         const channel = await ChannelModelAPI.findById(channelId)
@@ -1433,27 +1425,28 @@ describe('API Integration Tests', () => {
           name: 'method channel',
           urlPattern: 'test/method',
           maxBodyAgeDays: 1,
-          routes: [{
-            name: 'test route',
-            host: 'localhost',
-            port: 9876,
-            primary: true
-          }],
+          routes: [
+            {
+              name: 'test route',
+              host: 'localhost',
+              port: 9876,
+              primary: true
+            }
+          ],
           updatedBy: {
             id: new ObjectId(),
             name: 'Test'
           }
         }
 
-        const { _id: channelId } = await new ChannelModelAPI(methodChannelDoc).save()
+        const {_id: channelId} = await new ChannelModelAPI(
+          methodChannelDoc
+        ).save()
 
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .put(`/channels/${channelId}`)
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
-          .send({ maxBodyAgeDays: null })
+          .set('Cookie', rootCookie)
+          .send({maxBodyAgeDays: null})
           .expect(200)
 
         const channel = await ChannelModelAPI.findById(channelId)
@@ -1468,27 +1461,28 @@ describe('API Integration Tests', () => {
           requestBody: true,
           maxBodyAgeDays: 1,
           lastBodyCleared: new Date(),
-          routes: [{
-            name: 'test route',
-            host: 'localhost',
-            port: 9876,
-            primary: true
-          }],
+          routes: [
+            {
+              name: 'test route',
+              host: 'localhost',
+              port: 9876,
+              primary: true
+            }
+          ],
           updatedBy: {
             id: new ObjectId(),
             name: 'Test'
           }
         }
 
-        const { _id: channelId } = await new ChannelModelAPI(methodChannelDoc).save()
+        const {_id: channelId} = await new ChannelModelAPI(
+          methodChannelDoc
+        ).save()
 
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .put(`/channels/${channelId}`)
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
-          .send({ maxBodyAgeDays: 2 })
+          .set('Cookie', rootCookie)
+          .send({maxBodyAgeDays: 2})
           .expect(200)
 
         const channel = await ChannelModelAPI.findById(channelId)
@@ -1500,27 +1494,28 @@ describe('API Integration Tests', () => {
           name: 'timeout',
           urlPattern: 'test/method',
           timeout: 10,
-          routes: [{
-            name: 'test route',
-            host: 'localhost',
-            port: 9876,
-            primary: true
-          }],
+          routes: [
+            {
+              name: 'test route',
+              host: 'localhost',
+              port: 9876,
+              primary: true
+            }
+          ],
           updatedBy: {
             id: new ObjectId(),
             name: 'Test'
           }
         }
 
-        const { _id: channelId } = await new ChannelModelAPI(timeoutChannelDoc).save()
+        const {_id: channelId} = await new ChannelModelAPI(
+          timeoutChannelDoc
+        ).save()
 
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .put(`/channels/${channelId}`)
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
-          .send({ timeout: 9 })
+          .set('Cookie', rootCookie)
+          .send({timeout: 9})
           .expect(200)
 
         const channel = await ChannelModelAPI.findById(channelId)
@@ -1532,27 +1527,28 @@ describe('API Integration Tests', () => {
           name: 'timeoutUpdate',
           urlPattern: 'test/method',
           timeout: 10,
-          routes: [{
-            name: 'test route',
-            host: 'localhost',
-            port: 9876,
-            primary: true
-          }],
+          routes: [
+            {
+              name: 'test route',
+              host: 'localhost',
+              port: 9876,
+              primary: true
+            }
+          ],
           updatedBy: {
             id: new ObjectId(),
             name: 'Test'
           }
         }
 
-        const { _id: channelId } = await new ChannelModelAPI(timeoutChannelDoc).save()
+        const {_id: channelId} = await new ChannelModelAPI(
+          timeoutChannelDoc
+        ).save()
 
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .put(`/channels/${channelId}`)
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
-          .send({ timeout: null })
+          .set('Cookie', rootCookie)
+          .send({timeout: null})
           .expect(200)
 
         const channel = await ChannelModelAPI.findById(channelId)
@@ -1564,27 +1560,28 @@ describe('API Integration Tests', () => {
           name: 'timeout',
           urlPattern: 'test/method',
           timeout: 10,
-          routes: [{
-            name: 'test route',
-            host: 'localhost',
-            port: 9876,
-            primary: true
-          }],
+          routes: [
+            {
+              name: 'test route',
+              host: 'localhost',
+              port: 9876,
+              primary: true
+            }
+          ],
           updatedBy: {
             id: new ObjectId(),
             name: 'Test'
           }
         }
 
-        const { _id: channelId } = await new ChannelModelAPI(timeoutChannelDoc).save()
+        const {_id: channelId} = await new ChannelModelAPI(
+          timeoutChannelDoc
+        ).save()
 
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .put(`/channels/${channelId}`)
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
-          .send({ timeout: -1 })
+          .set('Cookie', rootCookie)
+          .send({timeout: -1})
           .expect(400)
 
         const channel = await ChannelModelAPI.findById(channelId)
@@ -1594,28 +1591,22 @@ describe('API Integration Tests', () => {
 
     describe('*removeChannel(channelId)', () => {
       it('should remove a specific channel by name', async () => {
-        const trx = await TransactionModelAPI.find({ channelID: channel1._id })
+        const trx = await TransactionModelAPI.find({channelID: channel1._id})
         // there can't be any linked transactions
         trx.length.should.be.exactly(0)
 
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .del(`/channels/${channel1._id}`)
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .expect(200)
-        const channels = await ChannelModelAPI.find({ name: 'TestChannel1' })
+        const channels = await ChannelModelAPI.find({name: 'TestChannel1'})
         channels.should.have.length(0)
       })
 
       it('should only allow an admin user to remove a channel', async () => {
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .del(`/channels/${channel1._id}`)
-          .set('auth-username', testUtils.nonRootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', nonRootCookie)
           .expect(403)
       })
 
@@ -1626,12 +1617,14 @@ describe('API Integration Tests', () => {
           allow: ['polling'],
           type: 'polling',
           pollingSchedule: '5 * * * *',
-          routes: [{
-            name: 'PollRoute',
-            host: 'localhost',
-            port: 9876,
-            primary: true
-          }],
+          routes: [
+            {
+              name: 'PollRoute',
+              host: 'localhost',
+              port: 9876,
+              primary: true
+            }
+          ],
           updatedBy: {
             id: new ObjectId(),
             name: 'Test'
@@ -1640,21 +1633,20 @@ describe('API Integration Tests', () => {
 
         const spy = sinon.spy(polling, 'removePollingChannel')
 
-        const trx = await TransactionModelAPI.find({ channelID: channel1._id })
+        const trx = await TransactionModelAPI.find({channelID: channel1._id})
         // there can't be any linked transactions
         trx.length.should.be.exactly(0)
 
         await pollChannel.save()
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .del(`/channels/${pollChannel._id}`)
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .expect(200)
         spy.restore()
         spy.calledOnce.should.be.true()
-        spy.getCall(0).args[0].should.have.property('name', 'POLLINGTestChannel-Remove')
+        spy
+          .getCall(0)
+          .args[0].should.have.property('name', 'POLLINGTestChannel-Remove')
         spy.getCall(0).args[0].should.have.property('_id', pollChannel._id)
       })
 
@@ -1671,14 +1663,11 @@ describe('API Integration Tests', () => {
         })
 
         await trx.save()
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .del(`/channels/${channel1._id}`)
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .expect(200)
-        const channels = await ChannelModelAPI.find({ name: 'TestChannel1' })
+        const channels = await ChannelModelAPI.find({name: 'TestChannel1'})
         channels.should.have.length(1)
         should.exist(channels[0].status)
         channels[0].status.should.be.equal('deleted')
@@ -1687,50 +1676,42 @@ describe('API Integration Tests', () => {
 
     describe('*manuallyPollChannel', () => {
       it('should manually poll a channel', async () => {
-        const mockServer = await testUtils.createMockHttpServer('target1', 9876, 200)
+        const mockServer = await testUtils.createMockHttpServer(
+          'target1',
+          9876,
+          200
+        )
         config.polling.pollingPort = SERVER_PORTS.pollingPort
 
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .post(`/channels/${channel1._id}/trigger`)
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .expect(200)
 
-         mockServer.close
+        mockServer.close
       })
 
       it('should fail when polling channel cannot be triggered', async () => {
         config.polling.pollingPort = 1234
 
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .post(`/channels/${channel1._id}/trigger`)
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .expect(500)
       })
 
       it('should reject a manually polled channel - channel not found', async () => {
         const invalidId = mongoose.Types.ObjectId('4eeeeeeeeeeeeeeeebbbbbb2')
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .post(`/channels/${invalidId}/trigger`)
-          .set('auth-username', testUtils.rootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', rootCookie)
           .expect(404)
       })
 
       it('should not allow a non admin user from manually polling a channel they do not have access to', async () => {
-        await request(constants.BASE_URL)
+        await request(BASE_URL)
           .post(`/channels/${channel1._id}/trigger`)
-          .set('auth-username', testUtils.nonRootUser.email)
-          .set('auth-ts', authDetails.authTS)
-          .set('auth-salt', authDetails.authSalt)
-          .set('auth-token', authDetails.authToken)
+          .set('Cookie', nonRootCookie)
           .expect(403)
       })
     })
@@ -1744,12 +1725,15 @@ describe('API Integration Tests', () => {
       name: 'TEST DATA - Mock endpoint 1',
       urlPattern: '^/test/undefined/priority$',
       allow: ['PoC'],
-      routes: [{
-        name: 'test route',
-        host: 'localhost',
-        port: httpPortPlus40,
-        primary: true
-      }],
+      methods: ['GET'],
+      routes: [
+        {
+          name: 'test route',
+          host: 'localhost',
+          port: httpPortPlus40,
+          primary: true
+        }
+      ],
       updatedBy: {
         id: new ObjectId(),
         name: 'Test'
@@ -1760,13 +1744,16 @@ describe('API Integration Tests', () => {
       name: 'TEST DATA - Mock endpoint 2',
       urlPattern: '^/.*$',
       priority: 3,
+      methods: ['GET'],
       allow: ['PoC'],
-      routes: [{
-        name: 'test route',
-        host: 'localhost',
-        port: httpPortPlus41,
-        primary: true
-      }],
+      routes: [
+        {
+          name: 'test route',
+          host: 'localhost',
+          port: httpPortPlus41,
+          primary: true
+        }
+      ],
       updatedBy: {
         id: new ObjectId(),
         name: 'Test'
@@ -1777,13 +1764,16 @@ describe('API Integration Tests', () => {
       name: 'TEST DATA - Mock endpoint 3',
       urlPattern: '^/test/mock$',
       priority: 2,
+      methods: ['GET'],
       allow: ['PoC'],
-      routes: [{
-        name: 'test route',
-        host: 'localhost',
-        port: httpPortPlus40,
-        primary: true
-      }],
+      routes: [
+        {
+          name: 'test route',
+          host: 'localhost',
+          port: httpPortPlus40,
+          primary: true
+        }
+      ],
       updatedBy: {
         id: new ObjectId(),
         name: 'Test'
@@ -1794,22 +1784,16 @@ describe('API Integration Tests', () => {
       config.authentication.enableMutualTLSAuthentication = false
       config.authentication.enableBasicAuthentication = true
 
-      await Promise.all([
-        channel1.save(),
-        channel2.save(),
-        channel3.save()
-      ])
+      await Promise.all([channel1.save(), channel2.save(), channel3.save()])
 
       const testAppDoc = {
         clientID: 'testApp',
         clientDomain: 'test-client.jembi.org',
         name: 'TEST Client',
-        roles: [
-          'OpenMRS_PoC',
-          'PoC'
-        ],
+        roles: ['OpenMRS_PoC', 'PoC'],
         passwordAlgorithm: 'sha512',
-        passwordHash: '28dce3506eca8bb3d9d5a9390135236e8746f15ca2d8c86b8d8e653da954e9e3632bf9d85484ee6e9b28a3ada30eec89add42012b185bd9a4a36a07ce08ce2ea',
+        passwordHash:
+          '28dce3506eca8bb3d9d5a9390135236e8746f15ca2d8c86b8d8e653da954e9e3632bf9d85484ee6e9b28a3ada30eec89add42012b185bd9a4a36a07ce08ce2ea',
         passwordSalt: '1234567890',
         cert: ''
       }
@@ -1817,17 +1801,25 @@ describe('API Integration Tests', () => {
       await new ClientModelAPI(testAppDoc).save()
 
       // Create mock endpoint to forward requests to
-      mockServer1 = await testUtils.createMockHttpServer('target1', httpPortPlus41, 200)
-      mockServer2 = await testUtils.createMockHttpServer('target2', httpPortPlus40, 200)
+      mockServer1 = await testUtils.createMockHttpServer(
+        'target1',
+        httpPortPlus41,
+        200
+      )
+      mockServer2 = await testUtils.createMockHttpServer(
+        'target2',
+        httpPortPlus40,
+        200
+      )
     })
 
     after(async () => {
       await Promise.all([
-        ChannelModelAPI.deleteOne({ name: 'TEST DATA - Mock endpoint 1' }),
-        ChannelModelAPI.deleteOne({ name: 'TEST DATA - Mock endpoint 2' }),
-        ChannelModelAPI.deleteOne({ name: 'TEST DATA - Mock endpoint 3' }),
-        ChannelModelAPI.deleteOne({ name: 'TEST DATA - Mock endpoint 4' }),
-        ClientModelAPI.deleteOne({ clientID: 'testApp' }),
+        ChannelModelAPI.deleteOne({name: 'TEST DATA - Mock endpoint 1'}),
+        ChannelModelAPI.deleteOne({name: 'TEST DATA - Mock endpoint 2'}),
+        ChannelModelAPI.deleteOne({name: 'TEST DATA - Mock endpoint 3'}),
+        ChannelModelAPI.deleteOne({name: 'TEST DATA - Mock endpoint 4'}),
+        ClientModelAPI.deleteOne({clientID: 'testApp'}),
         mockServer1.close(),
         mockServer2.close()
       ])
@@ -1838,7 +1830,7 @@ describe('API Integration Tests', () => {
     })
 
     it('should route to the channel with higher priority if multiple channels match a request', async () => {
-      await promisify(server.start)({ httpPort: SERVER_PORTS.httpPort })
+      await promisify(server.start)({httpPort: SERVER_PORTS.httpPort})
       const res = await request(constants.HTTP_BASE_URL)
         .get('/test/mock')
         .auth('testApp', 'password')
@@ -1847,7 +1839,7 @@ describe('API Integration Tests', () => {
     })
 
     it('should treat a channel with an undefined priority with lowest priority', async () => {
-      await promisify(server.start)({ httpPort: SERVER_PORTS.httpPort })
+      await promisify(server.start)({httpPort: SERVER_PORTS.httpPort})
       const res = await request(constants.HTTP_BASE_URL)
         .get('/test/undefined/priority')
         .auth('testApp', 'password')
@@ -1860,20 +1852,23 @@ describe('API Integration Tests', () => {
         name: 'TEST DATA - Mock endpoint 4',
         urlPattern: '^/test/mock$',
         priority: 1,
+        methods: ['GET'],
         allow: ['something else'],
-        routes: [{
-          name: 'test route',
-          host: 'localhost',
-          port: httpPortPlus40,
-          primary: true
-        }],
+        routes: [
+          {
+            name: 'test route',
+            host: 'localhost',
+            port: httpPortPlus40,
+            primary: true
+          }
+        ],
         updatedBy: {
           id: new ObjectId(),
           name: 'Test'
         }
       }).save()
 
-      await promisify(server.start)({ httpPort: SERVER_PORTS.httpPort })
+      await promisify(server.start)({httpPort: SERVER_PORTS.httpPort})
       await request(constants.HTTP_BASE_URL)
         .get('/test/mock')
         .auth('testApp', 'password')
